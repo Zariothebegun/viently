@@ -31,3 +31,5 @@ jobs:
         continue-on-error: true
       - name: TypeScript validation
         run: npx tsc --noEmit
+      - name: Bundle the iOS app with Metro
+        run: npx expo export --platform ios --output-dir /tmp/viently-export
