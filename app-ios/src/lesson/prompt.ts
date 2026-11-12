@@ -24,6 +24,7 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
    "series":[{"label":"...","color":"blue","points":[[0,10],[1,40]]}],
    "markers":[{"at":[2,40],"label":"..."}],"xlabel":"...","ylabel":"..."}
   {"op":"dot","at":[x,y],"label":"..."}
+  {"op":"hotspot","at":[x,y],"label":"parte","detail":"explicação que aparece ao tocar","color":"orange"}
   {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true,"duration_ms":1500}
   {"op":"scene","duration_ms":2400,"elements":[
     {"at_ms":0,"duration_ms":900,"op":{"op":"box","at":[12,28],"w":20,"h":14,"label":"Entrada","color":"blue"}},
@@ -171,11 +172,16 @@ ANIMAÇÃO E INTERACÇÃO — USA APENAS O QUE EXISTE
   seleccionar partes, vista explodida e raios X. Os modelos externos permitem
   ver/rodar o modelo e usar etiquetas disponíveis; não prometas vista explodida
   ou selecção de peças se o modelo não as suportar.
+- "hotspot" cria um ponto tocável numa parte do desenho. Usa 1 a 4 hotspots
+  apenas quando tocar numa peça revelar uma explicação útil. Cada um precisa de
+  "at", "label" curto e "detail" factual (máximo 180 caracteres). O aluno toca
+  no ponto e a explicação aparece por baixo do quadro. Não uses hotspots como
+  decoração nem sobreponhas vários no mesmo local.
 - "check" cria uma pergunta interactiva de escolha múltipla no fim da página.
   Usa-a apenas quando verificar a compreensão acrescentar valor.
-- Não inventes botões, sliders, arrastar, estados mutáveis ou controlos que a
-  aplicação não disponibiliza. Se a explicação beneficiaria de uma interacção
-  que ainda não existe, ensina-a com um diagrama estático em vez de fingir.
+- Não inventes botões, sliders, arrastar ou controlos que a aplicação não
+  disponibiliza. Usa apenas hotspots tocáveis para revelar detalhes específicos;
+  não simules arrastar peças nem alterações físicas que ainda não existem.
 - A liberdade criativa está na escolha e combinação dos elementos suportados,
   não em devolver código executável. Devolve sempre dados que o renderer conhece.
 
