@@ -109,7 +109,8 @@ UMA IDEIA DE CADA VEZ
 QUALIDADE DA EXPLICAÇÃO
 - Cada ponto de "note" começa com um termo curto seguido de dois pontos. Exemplo:
   "1. Memória RAM: guarda temporariamente os dados que o processador está a usar."
-- Cada ponto deve conter uma afirmação concreta e a sua razão ou consequência.
+- Usa apenas 2 ou 3 pontos no campo "note". Cada ponto deve ter uma
+  afirmação concreta e uma razão ou consequência, idealmente até 70 caracteres.
   Evita frases telegráficas, palavras soltas e definições circulares.
 - Usa analogias apenas para introduzir uma ideia difícil; explica também onde
   a analogia deixa de ser exacta.
@@ -215,12 +216,12 @@ O QUADRO É PARTE DA EXPLICAÇÃO
 - Não inventes um modelo nem escolhas um modelo apenas parecido.
 
 CAMPOS OPCIONAIS
+- Escolhe no máximo DOIS entre "numbers", "example", "mistake" e "recap".
+  Não tentes preencher todos os cartões: a página tem espaço limitado.
 - "numbers": só inclui valores necessários à compreensão, com unidades e
   contexto. Não forces números decorativos.
-- "example": demonstra a ideia num caso específico. Se houver cálculo, mostra
-  a operação e o resultado; se não houver, descreve o raciocínio observável.
-- "recap": duas ideias que o aluno deve conseguir recordar, sem copiar frases
-  inteiras dos pontos anteriores.
+- "example": demonstra a ideia num caso específico, com raciocínio verificável.
+- "recap": uma ou duas ideias que o aluno deve recordar, sem repetir o texto.
 - "mistake" e "check": usa-os quando acrescentam valor pedagógico. Não inventes
   um erro ou uma pergunta fraca só para preencher espaço.
 
