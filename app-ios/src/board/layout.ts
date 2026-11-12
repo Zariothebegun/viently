@@ -254,6 +254,14 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   // Reserva primeiro o rectângulo 3D. Assim, texto e formas são deslocados
   // para fora do modelo em vez de ficarem desenhados por cima dele.
   work.sort((a, b) => Number(b.op === "model3d") - Number(a.op === "model3d"));
+  const modelRegions = work
+    .filter((op) => op.op === "model3d")
+    .map((op) => opBBox(op))
+    .filter((b): b is Box => !!b);
+  const insideModel = (p: Pt) =>
+    modelRegions.some(([x1, y1, x2, y2]) => p[0] > x1 && p[0] < x2 && p[1] > y1 && p[1] < y2);
+  const crossesModel = (a: Pt, b: Pt) =>
+    segSamples(a, b, 3).some(insideModel);
 
   // 1. formas procuram espaço
   for (const op of work) {
@@ -373,6 +381,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     if (kind === "arrow" || kind === "line") {
       op.from = shiftPt(op.from, displaced);
       op.to = shiftPt(op.to, displaced);
+      if (crossesModel(op.from, op.to)) {
+        op._drop = true;
+        continue;
+      }
       if (kind === "arrow") {
         op.from = snapEndpoint(op.from, op.to, placed);
         op.to = snapEndpoint(op.to, op.from, placed);
@@ -384,6 +396,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     } else if (kind === "callout") {
       op.around = shiftPt(op.around ?? [50, 38], displaced);
       op.to = shiftPt(op.to ?? [60, 32], displaced);
+      if (crossesModel(op.around, op.to) || insideModel(op.around) || insideModel(op.to)) {
+        op._drop = true;
+        continue;
+      }
       ringToShapeEdge(op, work);
       capCallout(op);
       if (op.label) {
@@ -416,6 +432,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     } else if (kind === "curve" || kind === "polygon") {
       let pts: Pt[] = [...(op.points ?? [])];
       if (kind === "polygon" && pts.length >= 3) pts = [...pts, pts[0]];
+      if (pts.some(insideModel) || pts.some((p, i) => i > 0 && crossesModel(pts[i - 1], p))) {
+        op._drop = true;
+        continue;
+      }
       for (let i = 0; i < pts.length - 1; i++) {
         for (const [x, y] of segSamples(pts[i], pts[i + 1], 6)) {
           placed.push({ b: [x - 2.2, y - 2.2, x + 2.2, y + 2.2], w: 0.25 });
@@ -423,6 +443,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       }
     } else if (kind === "dot" && op.at) {
       op.at = shiftPt(op.at, displaced);
+      if (insideModel(op.at)) {
+        op._drop = true;
+        continue;
+      }
       placed.push({ b: [op.at[0] - 1.2, op.at[1] - 1.2, op.at[0] + 1.2, op.at[1] + 1.2], w: 0.6 });
       if (op.label) {
         const lp: Pt = op.label_at ?? [op.at[0] + 2.5, op.at[1] - 2.5];
