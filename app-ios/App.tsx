@@ -1683,9 +1683,11 @@ const s = StyleSheet.create({
     marginTop: 3,
     fontFamily: "Quicksand_600SemiBold",
   },
-  quizOpts: { marginTop: 8, flexDirection: "row", gap: 6 },
+  quizOpts: { marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 6 },
   quizOpt: {
-    flex: 1,
+    width: "48%",
+    flexGrow: 0,
+    flexShrink: 1,
     flexDirection: "column",
     alignItems: "flex-start",
     gap: 5,
