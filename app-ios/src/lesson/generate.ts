@@ -7,7 +7,6 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 // API alternativa (ex.: proxy local do AI Studio) configurada no .env.
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
-const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
 const API_MODEL = process.env.EXPO_PUBLIC_API_MODEL;
 
 // Modelo por omissão. O "lightning" é o mais rápido dos gratuitos; os
@@ -24,7 +23,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v5";
+const CACHE_KEY = "viently.lessons.v6";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -42,7 +41,7 @@ function hash(s: string): string {
 async function cacheKey(input: GenerateInput): Promise<string> {
   const tail = input.history.slice(-2).map((m) => m.content).join("~").slice(-360);
   return hash(
-    `${input.question}|${input.pace}|${input.minutes}|${tail}|${input.model ?? ""}`,
+    `${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -604,15 +603,6 @@ function formatBody(mode: Format): Record<string, unknown> {
   return {};
 }
 
-const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY || null;
-const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-3-flash-preview";
-
-const OPENROUTER_KEY = (() => {
-  const env = process.env.EXPO_PUBLIC_OPENROUTER_KEY;
-  return env && env.startsWith("sk-") ? env : null;
-})();
-
 async function callModel(
   model: string,
   system: string,
@@ -620,7 +610,7 @@ async function callModel(
   mode: Format,
   timeoutMs: number,
   endpoint: string = API_BASE ? `${API_BASE}/chat/completions` : ENDPOINT,
-  apiKey: string | null = API_BASE && API_KEY ? API_KEY : input.key,
+  apiKey: string | null = input.key,
 ): Promise<Lesson> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -632,53 +622,24 @@ async function callModel(
     headers["HTTP-Referer"] = "https://viently.pt";
     headers["X-Title"] = "Viently";
   }
-  // A API oficial do Gemini usa o formato nativo: o responseMimeType dá JSON
-  // limpo; a camada OpenAI-compatível degenera com json_schema.
-  const isGemini = endpoint.includes("generativelanguage.googleapis.com");
-  const body = isGemini
-    ? {
-        contents: [
-          ...input.history.slice(-6).map((m: any) => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: String(m.content ?? "") }],
-          })),
-          { role: "user", parts: [{ text: input.question }] },
-        ],
-        systemInstruction: { parts: [{ text: system }] },
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json",
-          // sem responseSchema: declarar board como objecto vazio fazia o
-          // Gemini devolver [{},{},...] e a aula ficava sem ops
-
-          // sem pensamento: é o que fazia a resposta ultrapassar o tempo e
-          // chegar ao fim com JSON cortado
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }
-    : {
-        model,
-        temperature: 0.4,
-        max_tokens: 4096,
-        ...formatBody(mode),
-        messages: [
-          { role: "system", content: system },
-          ...input.history.slice(-6),
-          { role: "user", content: input.question },
-        ],
-      };
-  // formato nativo vai ao endpoint nativo, com a chave no header próprio
-  const url = isGemini
-    ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-    : endpoint;
-  const reqHeaders = { ...headers };
-  if (isGemini) {
-    delete reqHeaders.Authorization;
-    reqHeaders["x-goog-api-key"] = apiKey || "";
-  }
+  const body = {
+    model,
+    temperature: 0.4,
+    max_tokens: 4096,
+    ...formatBody(mode),
+    messages: [
+      { role: "system", content: system },
+      ...input.history.slice(-6),
+      { role: "user", content: input.question },
+    ],
+  };
   try {
-    res = await fetch(url, { method: "POST", headers: reqHeaders, signal: ctrl.signal, body: JSON.stringify(body) });
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      signal: ctrl.signal,
+      body: JSON.stringify(body),
+    });
   } catch (e: any) {
     if (e?.name === "AbortError") {
       throw new Error("O modelo demorou demasiado a responder. Tenta outra vez.");
@@ -694,41 +655,17 @@ async function callModel(
   }
 
   const json = await res.json();
-  if (isGemini) {
-    const cand = json?.candidates?.[0];
-    const content = cand?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("")
-      || cand?.content?.parts?.[0]?.text || "";
-    if (!content.trim()) {
-      const fr = json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason;
-      throw new Error(`Resposta vazia do Gemini (${fr || "sem fim"}).`);
-    }
-    return parseLesson(content);
+  const content = json?.choices?.[0]?.message?.content
+    || json?.choices?.[0]?.message?.reasoning_content;
+  if (typeof content !== "string" || !content.trim()) {
+    throw new Error("Resposta vazia do modelo.");
   }
-  const msg = json?.choices?.[0]?.message;
-  // modelos de raciocínio podem chegar ao limite no "pensamento" e deixar o
-  // content vazio; nesse caso usamos o próprio raciocínio como resposta
-  const content = msg?.content || msg?.reasoning_content;
-  if (!content) throw new Error("Resposta vazia do modelo.");
   return parseLesson(content);
 }
 
 // só estes erros podem vir do formato da resposta; os outros não melhoram a
 // repetir o mesmo modelo, por isso passamos ao fallback seguinte
 const FORMAT_RETRY = new Set([400, 404, 422]);
-
-// O responseSchema do Gemini rejeita campos da variante OpenAI; limpa-os.
-function geminiSchema(node: any): any {
-  if (Array.isArray(node)) return node.map(geminiSchema);
-  if (node && typeof node === "object") {
-    const out: any = {};
-    for (const [k, v] of Object.entries(node)) {
-      if (k === "additionalProperties" || k === "strict") continue;
-      out[k] = geminiSchema(v);
-    }
-    return out;
-  }
-  return node;
-}
 
 export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   const key = await cacheKey(input);
@@ -752,16 +689,13 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   // (proxy no PC) fica em último, só útil em casa.
   type Attempt = { model: string; endpoint: string; key: string | null };
   const attempts: Attempt[] = [];
-  if (GEMINI_KEY) {
-    attempts.push({ model: GEMINI_MODEL, endpoint: GEMINI_ENDPOINT, key: GEMINI_KEY });
-  }
-  const cloudKey = OPENROUTER_KEY || input.key;
+  const cloudKey = input.key;
   if (cloudKey) {
     const cloudModels = [input.model || DEFAULT_MODEL, ...FALLBACK_MODELS];
     for (const m of cloudModels) attempts.push({ model: m, endpoint: ENDPOINT, key: cloudKey });
   }
   if (API_BASE) {
-    attempts.push({ model: API_MODEL, endpoint: `${API_BASE}/chat/completions`, key: API_KEY });
+    attempts.push({ model: API_MODEL || DEFAULT_MODEL, endpoint: `${API_BASE}/chat/completions`, key: input.key });
   }
   if (!attempts.length) attempts.push({ model: DEFAULT_MODEL, endpoint: ENDPOINT, key: input.key });
 
