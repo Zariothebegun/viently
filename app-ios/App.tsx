@@ -19,7 +19,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   PanResponder,
-  ScrollView,
   Platform,
   Pressable,
   SafeAreaView,
@@ -136,7 +135,11 @@ function writeOf(step: Step): string {
     .map((l) => l.replace(/[ \t]+/g, " ").trim())
     .filter(Boolean)
     .join("\n")
-    .slice(0, 1400);
+    .split("\\n")
+    .slice(0, 4)
+    .map((line) => line.slice(0, 190))
+    .join("\\n")
+    .slice(0, 760);
   if (w) return w;
   const s = (step.say ?? "")
     .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
@@ -159,8 +162,10 @@ function geometry(w: number, h: number, hasQuiz: boolean): Geom {
   const bw = Math.min(w - 32, 440);
   // a página é uma só: o quadro pode ocupar mais altura do que quando havia
   // vários passos, sem empurrar a pergunta para fora do ecrã
-  const ratio = hasQuiz ? 0.9 : 0.98;
-  const bh = Math.round(Math.min(bw * ratio, h * 0.38));
+  const ratio = hasQuiz ? 0.78 : 0.86;
+  // O quadro ocupa uma faixa previsível do ecrã; o resto fica para ensinar,
+  // sem scroll interno nem conteúdo escondido por baixo do composer.
+  const bh = Math.round(Math.min(bw * ratio, h * 0.31));
   const boardX = Math.round((w - bw) / 2);
   const boardY = 6 + HEAD_H;
   return { w, h, bw, bh, boardX, boardY };
@@ -429,9 +434,6 @@ export default function App() {
   const pagingRef = useRef(false);
   // a página pode ser mais alta do que o ecrã: rola-se dentro dela e só se
   // passa à seguinte quando o texto chega ao fim
-  const pageScroll = useRef<any>(null);
-  const scrollY = useRef(0);
-  const scrollMax = useRef(0);
   const loadingRef = useRef<Set<string>>(new Set());
   const cursorTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const voiceRef = useRef(voice);
@@ -741,8 +743,8 @@ export default function App() {
         newIds: next.filter((it) => !beforeIds.has(it.id)).map((it) => it.id),
         suggestions: i === steps.length - 1 ? lesson.suggestions ?? [] : [],
         state: "idle",
-        title,
-        subtitle: i === 0 ? lesson.subtitle : `passo ${i + 1} de ${steps.length}`,
+        title: step.title?.trim() || (i === 0 ? title : `${title} · ${i + 1}`),
+        subtitle: step.subtitle?.trim() || (i === 0 ? lesson.subtitle : `continuação · passo ${i + 1} de ${steps.length}`),
         stepIndex: i,
         stepCount: steps.length,
         say: step.say,
@@ -916,10 +918,8 @@ export default function App() {
       onMoveShouldSetPanResponder: (_e, g) => {
         if (pagingRef.current || modelOpen) return false;
         if (Math.abs(g.dy) <= 8 || Math.abs(g.dy) <= Math.abs(g.dx) * 1.15) return false;
-        // a rolar para cima com texto por ler: deixa rolar a página
-        if (g.dy < 0 && scrollY.current < scrollMax.current - 4) return false;
-        // a rolar para baixo com a página já no topo: deixa rolar a página
-        if (g.dy > 0 && scrollY.current > 4) return false;
+        // Um único gesto vertical controla o feed inteiro, como no TikTok.
+        // Não existe scroll interno em cada página.
         return true;
       },
       onPanResponderGrant: () => {
@@ -1206,18 +1206,6 @@ export default function App() {
     return (
       <View style={{ height: layout.h, overflow: "hidden" }}>
         <PagePaper />
-        <ScrollView
-          ref={pageScroll}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 96 }}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e: any) => {
-            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-            scrollY.current = contentOffset.y;
-            scrollMax.current = Math.max(0, contentSize.height - layoutMeasurement.height);
-          }}
-        >
         <View style={[s.headBlock, { height: HEAD_H }]}>
           <HandHeading
             title={pg.title}
@@ -1282,7 +1270,7 @@ export default function App() {
             </View>
           )}
         </View>
-        </ScrollView>
+
       </View>
     );
   };
@@ -1559,10 +1547,12 @@ const s = StyleSheet.create({
   },
 
   lineBox: {
-    paddingHorizontal: 24,
-    paddingTop: 6,
-    minHeight: 80,
-    maxHeight: 240,
+    paddingHorizontal: 22,
+    paddingTop: 3,
+    minHeight: 54,
+    maxHeight: 174,
+    flexShrink: 1,
+    overflow: "hidden",
   },
   lineText: {
     fontFamily: HAND,
@@ -1583,7 +1573,7 @@ const s = StyleSheet.create({
     marginTop: 1,
   },
   noteNumTxt: { fontFamily: QUICK, fontSize: 12, color: "#3d6b4a" },
-  noteBody: { flex: 1, fontFamily: QUICK, fontSize: 14.5, lineHeight: 20, color: BODY },
+  noteBody: { flex: 1, fontFamily: QUICK, fontSize: 13.5, lineHeight: 17, color: BODY },
   noteHead: { fontFamily: QUICK, color: "#2f3a33" },
   cards: { marginTop: 8 },
   nums: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6 },
@@ -1618,8 +1608,8 @@ const s = StyleSheet.create({
   },
   recapLine: {
     fontFamily: QUICK,
-    fontSize: 13.5,
-    lineHeight: 18,
+    fontSize: 12.5,
+    lineHeight: 16,
     color: "#4a554e",
     marginTop: 2,
   },
