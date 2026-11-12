@@ -172,5 +172,5 @@ ANTES DE DEVOLVER O JSON, CONFIRMA
 - A página ensina algo concreto sem ficar sobrecarregada?
 - Não repetiste uma explicação já dada no histórico?
 
-${BOARD_REFERENCE}\`;
+${BOARD_REFERENCE}`;
 }
