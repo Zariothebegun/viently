@@ -1063,7 +1063,7 @@ export default function App() {
     patchPage(page.id, { answered: index, history });
     // Regista evidência persistente por tema; a próxima explicação pode
     // ajustar a profundidade sem assumir domínio com base numa única resposta.
-    masteryWriteRef.current = recordMasteryAttempt(page.root, index === page.check.answer_index);
+    masteryWriteRef.current = masteryWriteRef.current.then(() => recordMasteryAttempt(page.root, index === page.check!.answer_index));
   }
 
   function ask(text: string, continueCurrent = false) {
