@@ -30,7 +30,7 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=moderate
+        run: npm audit --omit=dev --audit-level=high
       - name: Align Expo packages with the SDK
         run: npx expo install --fix
       - name: Check Expo dependency compatibility
