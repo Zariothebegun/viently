@@ -495,7 +495,9 @@ export default function App() {
   function fastDur(item: Item): number {
     // as durações do caderno (timeline.ts) são de leitura calma; aqui o
     // desenho é comprimido para caber em menos de um segundo por passo
-    if (item.op.op === "motion") return 1500;
+    if (item.op.op === "motion") {
+      return Math.max(250, Math.min(5000, Number(item.op.duration_ms) || 1500));
+    }
     const base = item.op.op === "graph" || item.op.op === "notes" ? 1.4 : 1;
     return Math.round(Math.max(70, Math.min(300, 150 * base)));
   }
@@ -649,11 +651,22 @@ export default function App() {
     let acc = 70;
     fresh.forEach((item) => {
       const d = fastDur(item);
-      starts.push(acc);
+      const requestedStart = item.op.op === "motion" && item.op.start_ms != null
+        ? Math.max(0, Math.min(6000, item.op.start_ms))
+        : acc;
+      starts.push(requestedStart);
       durs.push(d);
-      acc += d + 28;
+      acc = Math.max(acc, requestedStart + d + 28);
     });
     const total = Math.max(420, acc - 28);
+    const hasOverlappingMotion = fresh.some((item, i) =>
+      item.op.op === "motion" && fresh.some((other, j) =>
+        i !== j &&
+        starts[j] < starts[i] + durs[i] &&
+        starts[j] + durs[j] > starts[i],
+      ),
+    );
+    if (hasOverlappingMotion) pinkOp.setValue(0);
 
     setLive({ pageId: p.id, items: fresh, starts, durs });
     setTick(0);
@@ -667,6 +680,7 @@ export default function App() {
           // The guide cursor follows the same segment sequence as the particle.
           // stopPlayback() cancels both if the student leaves this page.
           if (item.op.op === "motion") {
+            if (hasOverlappingMotion) return;
             const points = item.op.points;
             const distances = points.slice(1).map((point, index) =>
               Math.hypot(point[0] - points[index][0], point[1] - points[index][1]),
