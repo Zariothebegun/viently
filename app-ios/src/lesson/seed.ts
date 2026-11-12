@@ -18,7 +18,7 @@ export const seedLesson: Lesson = {
     {
       say: "Numa célula do corpo humano, o ADN duplica-se antes da divisão. Durante a mitose, as cópias são separadas e distribuídas. No fim, formam-se duas células com 46 cromossomas cada.",
       write:
-        "1. A mitose divide uma célula em duas iguais.\n2. O ADN duplica-se antes de a célula se dividir.\n3. Cada célula-filha recebe 46 cromossomas.",
+        "1. ADN duplicado: antes da mitose, cada cromossoma fica com duas cópias ligadas.\n2. Separação: as cópias são puxadas para lados opostos da célula.\n3. Resultado: cada célula-filha recebe 46 cromossomas, como a célula humana inicial.",
       board: [
         { op: "model3d", model: "cell", at: [8, 3], w: 52, h: 39, title: "Célula animal" },
         {
