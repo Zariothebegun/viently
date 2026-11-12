@@ -230,9 +230,14 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     if (op.around) op.around = clampPt(op.around, ylo);
     if (Array.isArray(op.points)) op.points = op.points.slice(0, 12).map((p: Pt) => clampPt(p, ylo));
     if (["box", "ellipse", "axes", "graph", "model3d"].includes(kind)) {
-      const [x, y] = op.at ?? [10, 20];
-      op.w = Math.min(Number(op.w ?? (kind === "model3d" ? 34 : 20)) || 20, 96 - x);
-      op.h = Math.min(Number(op.h ?? (kind === "model3d" ? 18 : 10)) || 10, 71 - y);
+      const [rawX, rawY] = op.at ?? [10, 20];
+      const x = Math.min(96, Math.max(2, Number(rawX) || 2));
+      const y = Math.min(71, Math.max(3, Number(rawY) || 3));
+      op.at = [x, y];
+      const defaultW = kind === "model3d" ? 54 : 20;
+      const defaultH = kind === "model3d" ? 38 : 10;
+      op.w = Math.max(1, Math.min(Number(op.w ?? defaultW) || defaultW, 98 - x));
+      op.h = Math.max(1, Math.min(Number(op.h ?? defaultH) || defaultH, 73 - y));
     }
     if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d"].includes(kind)) {
       const bb = opBBox(op);
@@ -340,8 +345,8 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       continue;
     }
     const { pos, bbox } = best;
-    const dx = pos[0] - (kind === "polygon" || kind === "notes" ? bbox[0] : (op.at?.[0] ?? 0));
-    const dy = pos[1] - (kind === "polygon" || kind === "notes" ? bbox[1] : (op.at?.[1] ?? 0));
+    const dx = pos[0] - (kind === "polygon" ? x0 : kind === "notes" ? x0Of(op) : (op.at?.[0] ?? 0));
+    const dy = pos[1] - (kind === "polygon" ? y0 : kind === "notes" ? y0Of(op) : (op.at?.[1] ?? 0));
     if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
       displaced.push({ b: bbox, dx, dy });
     }
