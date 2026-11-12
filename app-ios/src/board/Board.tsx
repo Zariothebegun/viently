@@ -349,6 +349,26 @@ function GraphOp({
   );
 }
 
+function pointAlong(points: Pt[], progress: number): Pt {
+  if (points.length < 2) return points[0] ?? [50, 38];
+  const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+  const total = lengths.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return points[0];
+  let remaining = clamp01(progress) * total;
+  for (let i = 0; i < lengths.length; i++) {
+    const length = lengths[i];
+    if (remaining <= length || i === lengths.length - 1) {
+      const t = length > 0 ? clamp01(remaining / length) : 1;
+      return [
+        points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+        points[i][1] + (points[i + 1][1] - points[i][1]) * t,
+      ];
+    }
+    remaining -= length;
+  }
+  return points[points.length - 1];
+}
+
 function renderOp(item: Item, frac: number): React.ReactNode {
   const o: any = item.op;
   const seed = item.seed;
@@ -420,6 +440,36 @@ function renderOp(item: Item, frac: number): React.ReactNode {
 
     case "line":
       return <G key={item.id}>{stroked(jitterSeg(rnd, o.from, o.to, 0.55), p(0), stroke)}</G>;
+
+    case "motion": {
+      const points = (o.points ?? []) as Pt[];
+      if (points.length < 2) return null;
+      const current = pointAlong(points, frac);
+      const path = points.map((point, index) =>
+        `${index === 0 ? "M" : "L"} ${point[0].toFixed(2)} ${point[1].toFixed(2)}`,
+      ).join(" ");
+      const c = color(o.color ?? "blue");
+      const r = Math.max(0.8, Math.min(3.5, Number(o.radius) || 1.8));
+      return (
+        <G key={item.id}>
+          {o.trail !== false && (
+            <Path d={path} stroke={c} strokeWidth={0.55} strokeDasharray="1.8 1.8" strokeLinecap="round" fill="none" opacity={0.38} />
+          )}
+          <Circle cx={current[0]} cy={current[1]} r={r * 1.9} fill={c} opacity={0.14} />
+          <Circle cx={current[0]} cy={current[1]} r={r} fill={c} />
+          {!!o.label && frac > 0.28 && (
+            <RevealText
+              text={String(o.label)}
+              at={[Math.min(94, current[0] + 3.2), Math.max(4, current[1] - 3.2)]}
+              size="s"
+              fill={c}
+              frac={clamp01((frac - 0.28) / 0.5)}
+              seed={seed + 3}
+            />
+          )}
+        </G>
+      );
+    }
 
     case "arrow": {
       return (
