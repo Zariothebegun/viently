@@ -437,7 +437,7 @@ function parseLesson(raw: string): Lesson {
       .replace(/[ \t]+/g, " ")
       .replace(/\n{2,}/g, "\n")
       .trim()
-      .slice(0, 1400);
+      .slice(0, 700);
     // resumo "Para lembrar" para fixar no fim da página
     const rc = data.recap;
     const rcTitle = String(rc?.title ?? "").trim().slice(0, 40) || "Para lembrar";
@@ -567,7 +567,7 @@ const LESSON_SCHEMA = {
       properties: { wrong: { type: "string" }, right: { type: "string" } },
     },
     say: { type: "string" },
-    note: { type: "string" },
+    note: { type: "string", maxLength: 700 },
     recap: {
       type: "object",
       properties: {
