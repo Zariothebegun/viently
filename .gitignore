@@ -1,0 +1,28 @@
+# dependências
+node_modules/
+**/node_modules/
+
+# segredos — nunca versionar
+.env
+.env.*
+!.env.example
+
+# build e caches
+.expo/
+dist/
+build/
+*.tsbuildinfo
+.cache/
+
+# capturas e artefactos de teste locais
+.preview/
+qr-*.png
+preview-*.png
+
+# sistema
+.DS_Store
+Thumbs.db
+
+# logs locais (podem conter tokens)
+*.log
+.expo-*.log
