@@ -263,7 +263,16 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
           {page.mistake.right.slice(0, 55)}
         </Text>
       )}
-      {!!page.recap && (compact || !page.mistake) && (
+      {!!page.mistake && (compact ? !page.example : true) && (
+        <Text style={s.cardLine}>
+          <Text style={s.cardKey}>Atenção. </Text>
+          {page.mistake.wrong.slice(0, 60)} <Text style={s.cardKey}>Certo: </Text>
+          {page.mistake.right.slice(0, 60)}
+        </Text>
+      )}
+      {!!page.recap && (compact
+        ? !page.example && !page.mistake
+        : !page.mistake) && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
           {page.recap.lines.slice(0, 1).map((l, i) => (
