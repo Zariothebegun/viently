@@ -3,7 +3,7 @@
 // que nada sai do quadro, nada se sobrepõe de forma ilegível, e que as
 // setas acabam na borda da forma e não no meio dela.
 
-import { CHAR_W, LINE_H, clampPt, dist } from "./geom";
+import { CHAR_W, LINE_H, clampPt, dist, textWidth, wrapText } from "./geom";
 import type { Item, Op, Pt, Size } from "./ops";
 
 type Box = [number, number, number, number];
@@ -16,13 +16,16 @@ export function opBBox(op: any): Box | null {
   if (k === "title") return [8, 1, 92, 13];
   if (k === "text" || k === "note") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
-    const size: Size = op.size ?? (k === "text" ? "m" : "s");
-    const w = Math.min(
-      String(op.text ?? "").length * CHAR_W[size],
-      48,
-    );
-    const lines = Math.max(1, Math.floor(w / 52) + 1);
-    const h = TEXT_H[size] * lines;
+    const size: Size = k === "note" ? "s" : (op.size ?? "m");
+    // Medir exactamente as linhas que o renderer desenha. A estimativa antiga
+    // calculava sempre uma linha e deixava o layout colocar texto por cima.
+    const fitW = Number.isFinite(Number(op.fit_w)) && Number(op.fit_w) > 0
+      ? Number(op.fit_w)
+      : undefined;
+    const lines = wrapText(String(op.text ?? ""), size, fitW);
+    const w = Math.max(1, Math.min(fitW ?? (size === "xl" ? 88 : 52),
+      ...lines.map((line) => line.length * CHAR_W[size])));
+    const h = Math.max(LINE_H[size], lines.length * LINE_H[size]);
     const x0 = op.align === "center" ? x - w / 2 : x;
     return [x0, y - h / 2, x0 + w, y + h / 2];
   }
@@ -42,7 +45,7 @@ export function opBBox(op: any): Box | null {
   if (k === "graph") {
     const [x, y] = (op.at ?? [12, 22]) as Pt;
     // inclui a faixa do título e dos eixos, senão o texto cai em cima deles
-    return [x - 2, y - 7, x + (op.w ?? 44) + 2, y + (op.h ?? 30) + 9];
+    return [x - 12, y - 9, x + (op.w ?? 44) + 5, y + (op.h ?? 30) + 11];
   }
   if (k === "box" || k === "ellipse" || k === "axes") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
@@ -51,6 +54,27 @@ export function opBBox(op: any): Box | null {
   if (k === "model3d") {
     const [x, y] = (op.at ?? [58, 16]) as Pt;
     return [x, y, x + (op.w ?? 34), y + (op.h ?? 18)];
+  }
+  if (k === "hotspot") {
+    const [x, y] = (op.at ?? [50, 38]) as Pt;
+    const label = String(op.label ?? "");
+    const w = Math.min(52, textWidth(label, "s"));
+    // O rótulo fica à direita do ponto; perto da margem passa para a esquerda.
+    const lx = x > 62 ? Math.max(2, x - 4 - w) : Math.min(98 - w, x + 4);
+    const ly = Math.max(5, y - 3.5);
+    return [Math.min(x - 5.5, lx - 0.8), Math.min(y - 5.5, ly - 2.2),
+      Math.max(x + 5.5, lx + w + 0.8), Math.max(y + 5.5, ly + 2.2)];
+  }
+  if (k === "scene") {
+    const boxes = (op.elements ?? []).map((element: any) => opBBox(element?.op))
+      .filter((b: Box | null): b is Box => !!b);
+    if (!boxes.length) return null;
+    return [
+      Math.min(...boxes.map((b: Box) => b[0])),
+      Math.min(...boxes.map((b: Box) => b[1])),
+      Math.max(...boxes.map((b: Box) => b[2])),
+      Math.max(...boxes.map((b: Box) => b[3])),
+    ];
   }
   if (k === "polygon") {
     const pts: Pt[] = op.points ?? [[10, 20]];
@@ -235,6 +259,22 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   for (const raw of ops) {
     const op: any = { ...raw };
     const kind = op.op;
+    if (kind === "scene" && Array.isArray(op.elements)) {
+      // Os elementos da cena também passam pelo motor de colisões. Não se
+      // altera at_ms/duration_ms: só a geometria espacial dos elementos.
+      let childPlaced: Placed[] = [];
+      const elements: any[] = [];
+      for (const element of op.elements) {
+        const child = element?.op;
+        if (!child || typeof child !== "object") continue;
+        const result = layoutPass([child as Op], childPlaced);
+        if (!result.ops.length) continue;
+        elements.push({ ...element, op: result.ops[0] });
+        childPlaced = result.placed;
+      }
+      op.elements = elements;
+      if (!elements.length) continue;
+    }
     const stroke = ["curve", "line", "arrow", "motion"].includes(kind);
     const ylo = hasTitle && stroke ? 16.5 : 3;
     if (op.at) op.at = clampPt(op.at);
@@ -252,7 +292,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       op.w = Math.max(1, Math.min(Number(op.w ?? defaultW) || defaultW, 98 - x));
       op.h = Math.max(1, Math.min(Number(op.h ?? defaultH) || defaultH, 73 - y));
     }
-    if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d"].includes(kind)) {
+    if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d", "scene", "hotspot"].includes(kind)) {
       const bb = opBBox(op);
       if (bb) {
         let est = (bb[2] - bb[0]) * (bb[3] - bb[1]);
@@ -276,8 +316,20 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   const crossesModel = (a: Pt, b: Pt) =>
     segSamples(a, b, 3).some(insideModel);
 
+  // Uma cena é composta primeiro, preservando os tempos de cada elemento.
+  // O seu rectângulo total fica reservado para as restantes operações.
+  for (const op of work.filter((item) => item.op === "scene")) {
+    const b = opBBox(op);
+    if (!b || modelRegions.some((m) => overlapArea(b, m) > 0)) {
+      op._drop = true;
+      continue;
+    }
+    placed.push({ b, w: 1 });
+  }
+
   // 1. formas procuram espaço
   for (const op of work) {
+    if (op.op === "scene" || op.op === "hotspot") continue;
     const kind = op.op;
     if (kind === "title") {
       const b = opBBox(op);
@@ -467,6 +519,28 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
         const x0 = op.label_at ? lp[0] - lw / 2 : lp[0];
         placed.push({ b: [x0, lp[1] - 2, x0 + lw, lp[1] + 2], w: 0.8 });
       }
+    } else if (kind === "hotspot" && op.at) {
+      op.at = shiftPt(op.at, displaced);
+      if (insideModel(op.at)) {
+        op._drop = true;
+        continue;
+      }
+      const original = [...op.at] as Pt;
+      let best: { at: Pt; b: Box; sc: number } | null = null;
+      for (const [dx, dy] of [[0, 0], [0, -7], [0, 7], [-9, 0], [9, 0], [0, 13], [0, -13]] as Pt[]) {
+        const at = clampPt([original[0] + dx, original[1] + dy]);
+        const b = opBBox({ ...op, at });
+        if (!b) continue;
+        const sc = score(b, placed) + (Math.abs(dx) + Math.abs(dy)) * 0.025;
+        if (!best || sc < best.sc) best = { at, b, sc };
+        if (sc <= 0.5) break;
+      }
+      if (!best || best.sc > 8) {
+        op._drop = true;
+        continue;
+      }
+      op.at = best.at;
+      placed.push({ b: best.b, w: 1 });
     }
   }
 
