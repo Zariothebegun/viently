@@ -75,7 +75,14 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
       <View style={s.stage}>
         <WV
           ref={ref}
-          source={{ html, baseUrl: "https://sandflow-sand3d-explorer.hf.space/" }}
+          source={{
+            html,
+            // O GLB vem do catálogo remoto, não do antigo host Sandflow.
+            // Usar a origem real evita resolver recursos relativos no domínio morto.
+            baseUrl: isPoly
+              ? (target.model.glb.match(/^(https?:\\/\\/[^/]+)\\//)?.[1] ?? "https://polyfork.dev") + "/"
+              : "https://cdn.jsdelivr.net/",
+          }}
           originWhitelist={["*"]}
           style={s.web}
           containerStyle={s.webWrap}
