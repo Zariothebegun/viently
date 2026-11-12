@@ -20,7 +20,7 @@ export const seedLesson: Lesson = {
       write:
         "1. A mitose divide uma célula em duas iguais.\n2. O ADN duplica-se antes de a célula se dividir.\n3. Cada célula-filha recebe 46 cromossomas.",
       board: [
-        { op: "model3d", model: "cell", at: [2, 1], w: 58, h: 44, title: "Célula animal" },
+        { op: "model3d", model: "cell", at: [8, 3], w: 52, h: 39, title: "Célula animal" },
         {
           op: "notes",
           at: [67, 5],
