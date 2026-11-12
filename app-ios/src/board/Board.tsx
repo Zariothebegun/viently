@@ -369,7 +369,7 @@ function pointAlong(points: Pt[], progress: number): Pt {
   return points[points.length - 1];
 }
 
-function renderOp(item: Item, frac: number): React.ReactNode {
+function renderOp(item: Item, frac: number, onHotspotPress?: (id: string) => void, activeHotspot?: string | null): React.ReactNode {
   const o: any = item.op;
   const seed = item.seed;
   const rnd = mulberry32(seed);
@@ -483,6 +483,8 @@ function renderOp(item: Item, frac: number): React.ReactNode {
             return renderOp(
               { id: item.id + "-scene-" + index, seed: seed + (index + 1) * 37, op: element.op },
               childFrac,
+              onHotspotPress,
+              activeHotspot,
             );
           })}
         </G>
@@ -797,6 +799,21 @@ function renderOp(item: Item, frac: number): React.ReactNode {
       );
     }
 
+    case "hotspot": {
+      const [x, y] = o.at as Pt;
+      const selected = activeHotspot === item.id;
+      const c = color(o.color ?? "orange");
+      return (
+        <G key={item.id}>
+          <Circle cx={x} cy={y} r={selected ? 4.1 : 3.2} fill={c} opacity={0.13} />
+          <Circle cx={x} cy={y} r={2.2} fill="none" stroke={c} strokeWidth={selected ? 0.9 : 0.65} />
+          <Circle cx={x} cy={y} r={0.85} fill={c} />
+          <Circle cx={x} cy={y} r={5.5} fill="transparent" onPress={() => onHotspotPress?.(item.id)} />
+          <RevealText text={String(o.label)} at={[Math.min(91, x + 4), Math.max(5, y - 3.5)]} size="s" fill={c} frac={1} seed={seed + 1} />
+        </G>
+      );
+    }
+
     case "dot": {
       const [x, y] = o.at;
       const r = 0.9 * p(0);
@@ -879,17 +896,21 @@ export function Board({
   width,
   height,
   paper = true,
+  onHotspotPress,
+  activeHotspot,
 }: {
   ops: Item[];
   fracOf: (item: Item) => number;
   width: number;
   height: number;
   paper?: boolean;
+  onHotspotPress?: (id: string) => void;
+  activeHotspot?: string | null;
 }) {
   return (
     <Svg width={width} height={height} viewBox={`0 0 ${LOGICAL_W} ${LOGICAL_H}`}>
       {paper && <Paper width={width} height={height} />}
-      {ops.map((item) => renderOp(item, fracOf(item)))}
+      {ops.map((item) => renderOp(item, fracOf(item), onHotspotPress, activeHotspot))}
     </Svg>
   );
 }
