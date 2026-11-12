@@ -125,7 +125,7 @@ export function sanitizeOps(raw: any): Op[] {
         out.push({ op: "erase", id: o.id ? String(o.id) : undefined });
         break;
       case "title":
-        if (o.text) out.push({ op: "title", text: String(o.text).slice(0, 60), color: o.color });
+        if (o.text) out.push({ op: "title", text: String(o.text).slice(0, 60), color: safeColor(o.color) });
         break;
       case "text":
         if (o.text) out.push({
@@ -139,7 +139,7 @@ export function sanitizeOps(raw: any): Op[] {
         });
         break;
       case "note":
-        if (o.text) out.push({ op: "note", text: String(o.text).slice(0, 160), at: pt(o.at, [10, 20]), color: o.color });
+        if (o.text) out.push({ op: "note", text: String(o.text).slice(0, 160), at: pt(o.at, [10, 20]), color: safeColor(o.color) });
         break;
       case "line":
         out.push({ op: "line", from: pt(o.from, [0, 0]), to: pt(o.to, [10, 10]), color: safeColor(o.color), dash: !!o.dash });
@@ -231,7 +231,7 @@ export function sanitizeOps(raw: any): Op[] {
       }
       case "curve": {
         const points = pts(o.points);
-        if (points.length >= 2) out.push({ op: "curve", points, color: o.color });
+        if (points.length >= 2) out.push({ op: "curve", points, color: safeColor(o.color) });
         break;
       }
       case "polygon": {
@@ -359,7 +359,7 @@ export function sanitizeOps(raw: any): Op[] {
       }
       case "underline":
       case "highlight":
-        out.push({ op: kind as "underline" | "highlight", at: pt(o.at, [10, 20]), w: num(o.w, 20), color: o.color });
+        out.push({ op: kind as "underline" | "highlight", at: pt(o.at, [10, 20]), w: num(o.w, 20), color: safeColor(o.color) });
         break;
       case "dot":
         out.push({
