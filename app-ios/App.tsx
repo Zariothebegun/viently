@@ -249,10 +249,10 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
       {!!page.example && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Exemplo. </Text>
-          {page.example}
+          {page.example.slice(0, compact ? 105 : 220)}
         </Text>
       )}
-      {!!page.mistake && (
+      {!compact && !!page.mistake && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Erro comum. </Text>
           {page.mistake.wrong} <Text style={s.cardKey}>Certo: </Text>
