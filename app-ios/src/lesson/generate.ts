@@ -401,6 +401,34 @@ function fitSentence(raw: string, max: number): string {
   return (space > 40 ? cut.slice(0, space) : cut).trim() + ".";
 }
 
+function removeTrailingCommas(value: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === ",") {
+      let next = i + 1;
+      while (next < value.length && /\\s/.test(value[next])) next++;
+      if (value[next] === "}" || value[next] === "]") continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function parseLesson(raw: string): Lesson {
   let text = raw.trim();
   // modelos às vezes embrulham em ```json
