@@ -80,7 +80,7 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
             // O GLB vem do catálogo remoto, não do antigo host Sandflow.
             // Usar a origem real evita resolver recursos relativos no domínio morto.
             baseUrl: isPoly
-              ? (target.model.glb.match(/^(https?:\\/\\/[^/]+)\\//)?.[1] ?? "https://polyfork.dev") + "/"
+              ? target.model.glb.split("/").slice(0, 3).join("/") + "/"
               : "https://cdn.jsdelivr.net/",
           }}
           originWhitelist={["*"]}
