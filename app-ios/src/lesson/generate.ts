@@ -125,10 +125,10 @@ export function sanitizeOps(raw: any): Op[] {
           op: "text",
           text: String(o.text).slice(0, 160),
           at: pt(o.at, [10, 20]),
-          size: o.size,
+          size: safeSize(o.size),
           color: o.color,
           align: o.align === "center" ? "center" : "left",
-          fit_w: o.fit_w ? num(o.fit_w, 40) : undefined,
+          fit_w: o.fit_w != null ? Math.max(8, Math.min(88, num(o.fit_w, 40))) : undefined,
         });
         break;
       case "note":
@@ -166,7 +166,7 @@ export function sanitizeOps(raw: any): Op[] {
           w: num(o.w, 22),
           h: num(o.h, 10),
           label: o.label ? String(o.label).slice(0, 40) : undefined,
-          size: o.size,
+          size: safeSize(o.size),
           color: o.color,
         });
         break;
