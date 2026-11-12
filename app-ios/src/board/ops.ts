@@ -147,6 +147,7 @@ export type Op =
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
   | { op: "dot"; at: Pt; label?: string; label_at?: Pt; color?: Ink }
+  | { op: "hotspot"; at: Pt; label: string; detail: string; color?: Ink }
   | { op: "erase"; id?: string }
   | { op: "clear" };
 
