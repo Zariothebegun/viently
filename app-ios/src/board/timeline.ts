@@ -96,6 +96,8 @@ export function specsOf(op: Op): Spec[] {
       const b = Math.abs(h) / 2;
       return [stroke(2 * Math.PI * Math.sqrt((a * a + b * b) / 2)), text(o.label)];
     }
+    case "motion":
+      return [stroke(polyLen((o.points ?? []) as Pt[]))];
     case "curve":
       return [stroke(polyLen((o.points ?? []) as Pt[]))];
     case "polygon":
