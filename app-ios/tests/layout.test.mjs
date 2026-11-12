@@ -21,6 +21,31 @@ test("long technical tokens are wrapped instead of escaping the board", () => {
   assert.ok(lines.every((line) => line.length <= Math.floor(20 / 1.45)));
 });
 
+test("shape labels are included when they wrap beyond the shape height", () => {
+  const box = opBBox({
+    op: "box",
+    at: [10, 10],
+    w: 12,
+    h: 4,
+    size: "m",
+    label: "texto técnico comprido",
+  });
+  assert.ok(box);
+  assert.ok(box[3] - box[1] > 4);
+});
+
+test("arrow labels receive their own collision bounds", () => {
+  const box = opBBox({
+    op: "arrow",
+    from: [10, 20],
+    to: [70, 20],
+    label: "transformação",
+  });
+  assert.ok(box);
+  assert.ok(box[2] > box[0]);
+  assert.ok(box[3] > box[1]);
+});
+
 test("hotspot bounds include the label and stay inside the logical canvas", () => {
   const box = opBBox({ op: "hotspot", at: [94, 38], label: "componente" });
   assert.ok(box);
