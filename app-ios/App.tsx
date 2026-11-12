@@ -651,6 +651,7 @@ export default function App() {
     let acc = 70;
     fresh.forEach((item) => {
       const d = fastDur(item);
+      // Explicit motion offsets are measured from the start of this page's board playback.
       const requestedStart = item.op.op === "motion" && item.op.start_ms != null
         ? Math.max(0, Math.min(6000, item.op.start_ms))
         : acc;
