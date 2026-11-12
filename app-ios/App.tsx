@@ -1247,7 +1247,7 @@ export default function App() {
           )}
         </View>
 
-        <View style={s.lineBox}>
+        <View style={[s.lineBox, pg.check && { maxHeight: 170 }]}>
           {pg.state === "done" ? (
             <NoteText text={pg.line} />
           ) : visibleLine ? (
@@ -1257,6 +1257,41 @@ export default function App() {
           )}
           {pg.state === "done" && <PageCards page={pg} />}
         </View>
+
+        {!!pg.check && (
+          <View style={s.quiz}>
+            <Text style={s.quizKicker}>confirma se percebeste</Text>
+            <Text style={s.quizPrompt}>{pg.check.prompt}</Text>
+            <View style={s.quizOpts}>
+              {pg.check.options.map((option, index) => {
+                const selected = pg.answered === index;
+                const correct = index === pg.check!.answer_index;
+                return (
+                  <Pressable
+                    key={index}
+                    onPress={() => pg.answered === undefined && patchPage(pg.id, { answered: index })}
+                    disabled={pg.answered !== undefined}
+                    style={[
+                      s.quizOpt,
+                      selected && (correct ? s.quizRight : s.quizWrong),
+                    ]}
+                  >
+                    <View style={[s.quizKey, selected && (correct ? s.quizKeyRight : s.quizKeyWrong)]}>
+                      <Text style={s.quizKeyTxt}>{String.fromCharCode(65 + index)}</Text>
+                    </View>
+                    <Text style={s.quizOptTxt} numberOfLines={3}>{option}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {pg.answered !== undefined && (
+              <Text style={s.quizWhy}>
+                {pg.answered === pg.check.answer_index ? "Certo. " : "Ainda não. "}
+                {pg.check.explanation ?? (pg.answered === pg.check.answer_index ? "Boa, segue para a próxima página." : "Revê a explicação e tenta noutra pergunta.")}
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={s.bottomArea}>
 
