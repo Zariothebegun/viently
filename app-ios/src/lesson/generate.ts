@@ -196,7 +196,7 @@ export function sanitizeOps(raw: any): Op[] {
           const childKind = String(element.op.op ?? "");
           // 3D models are rendered by the page overlay, not inside the SVG scene.
           // Nested and destructive operations are rejected to keep the renderer predictable.
-          if (["scene", "model3d", "clear", "erase"].includes(childKind)) continue;
+          if (["scene", "model3d", "clear", "erase", "hotspot"].includes(childKind)) continue;
           const child = sanitizeOps([element.op])[0];
           if (!child) continue;
           elements.push({
