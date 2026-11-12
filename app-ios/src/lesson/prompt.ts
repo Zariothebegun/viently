@@ -82,8 +82,9 @@ cilindro".
   "numbers": [{ "label": "nome curto", "value": "número com unidade" }],
   "example": "caso concreto com contas simples (40 a 130 caracteres)",
   "mistake": { "wrong": "erro comum (15 a 90 caracteres)", "right": "o que é correcto (15 a 90 caracteres)" },
-  "recap": { "title": "Para lembrar", "lines": ["2 a 3 frases de 6 a 14 palavras"] },
-  "board": [ <6 a 9 ops> ],
+  "recap": { "title": "Para lembrar", "lines": ["2 frases curtas"] },
+  "check": { "prompt": "pergunta curta", "options": ["opção A", "opção B", "opção C"], "answer_index": 0, "explanation": "explicação curta" },
+  "board": [ <5 a 8 ops> ],
   "suggestions": ["pergunta curta 1", "pergunta curta 2"]
 }
 
