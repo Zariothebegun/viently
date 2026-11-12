@@ -26,6 +26,19 @@ export function opBBox(op: any): Box | null {
     const x0 = op.align === "center" ? x - w / 2 : x;
     return [x0, y - h / 2, x0 + w, y + h / 2];
   }
+  if (k === "motion") {
+    const points: Pt[] = Array.isArray(op.points) ? op.points : [];
+    if (points.length < 2) return null;
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    const labelPad = op.label ? Math.min(28, String(op.label).length * 1.35) : 0;
+    return [
+      Math.max(0, Math.min(...xs) - 3),
+      Math.max(0, Math.min(...ys) - 7),
+      Math.min(100, Math.max(...xs) + 3 + labelPad),
+      Math.min(75, Math.max(...ys) + 3),
+    ];
+  }
   if (k === "graph") {
     const [x, y] = (op.at ?? [12, 22]) as Pt;
     // inclui a faixa do título e dos eixos, senão o texto cai em cima deles
