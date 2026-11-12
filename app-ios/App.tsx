@@ -1038,7 +1038,26 @@ export default function App() {
   // -------------------------------------------------------------------------
   // pedidos
 
-  function ask(text: string) {
+  function answerCheck(page: StepPage, index: number) {
+    if (!page.check || page.answered !== undefined || index < 0 || index >= page.check.options.length) return;
+    const correct = index === page.check.answer_index;
+    const selected = page.check.options[index];
+    const explanation = page.check.explanation ?? "";
+    const history: Msg[] = [
+      ...page.history,
+      {
+        role: "user",
+        content: `No teste "${page.check.prompt}", escolhi "${selected}".`,
+      },
+      {
+        role: "assistant",
+        content: `A resposta estava ${correct ? "correcta" : "incorrecta"}. ${explanation}`.trim(),
+      },
+    ];
+    patchPage(page.id, { answered: index, history });
+  }
+
+  function ask(text: string, continueCurrent = false) {
     const question = text.trim();
     if (!question) return;
     if (!key) {
@@ -1050,11 +1069,12 @@ export default function App() {
     stopPlayback();
     const ps = pagesRef.current;
     const cur = ps[activeRef.current] ?? ps[0] ?? HERO;
+    const isContinuation = continueCurrent && cur.kind === "step";
     const load = makeLoadPage({
       question,
       history: cur.history,
-      root: topicFrom(question),
-      depth: 0,
+      root: isContinuation ? cur.root : topicFrom(question),
+      depth: isContinuation ? cur.depth + 1 : 0,
     });
 
     let next: Page[];
@@ -1377,7 +1397,7 @@ export default function App() {
                 return (
                   <Pressable
                     key={index}
-                    onPress={() => pg.answered === undefined && patchPage(pg.id, { answered: index })}
+                    onPress={() => answerCheck(pg, index)}
                     disabled={pg.answered !== undefined}
                     style={[
                       s.quizOpt,
@@ -1407,7 +1427,7 @@ export default function App() {
           {showSuggestions && (
             <View style={s.suggestRow}>
               {pg.suggestions.slice(0, 2).map((c) => (
-                <SuggestionPill key={c} text={c} onPress={() => ask(c)} />
+                <SuggestionPill key={c} text={c} onPress={() => ask(c, true)} />
               ))}
             </View>
           )}
