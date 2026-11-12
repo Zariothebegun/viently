@@ -498,6 +498,9 @@ export default function App() {
     if (item.op.op === "motion") {
       return Math.max(250, Math.min(5000, Number(item.op.duration_ms) || 1500));
     }
+    if (item.op.op === "scene") {
+      return Math.max(250, Math.min(10000, Number(item.op.duration_ms) || 900));
+    }
     const base = item.op.op === "graph" || item.op.op === "notes" ? 1.4 : 1;
     return Math.round(Math.max(70, Math.min(300, 150 * base)));
   }
@@ -652,7 +655,7 @@ export default function App() {
     fresh.forEach((item) => {
       const d = fastDur(item);
       // Explicit motion offsets are measured from the start of this page's board playback.
-      const requestedStart = item.op.op === "motion" && item.op.start_ms != null
+      const requestedStart = (item.op.op === "motion" || item.op.op === "scene") && item.op.start_ms != null
         ? Math.max(0, Math.min(6000, item.op.start_ms))
         : acc;
       starts.push(requestedStart);
@@ -677,6 +680,12 @@ export default function App() {
         () => {
           if (item.op.op === "model3d") {
             movePink(anchorOf(item.op, g));
+            return;
+          }
+          if (item.op.op === "scene") {
+            // A composed scene has multiple simultaneous focal points.
+            blueOp.setValue(0);
+            pinkOp.setValue(0);
             return;
           }
           // The guide cursor follows the same segment sequence as the particle.
