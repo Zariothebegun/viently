@@ -190,16 +190,23 @@ export function wrapText(
   maxW?: number,
 ): string[] {
   const limit = maxW ?? (size === "xl" ? 88 : 52);
-  const words = String(text).replace(/\^/g, "").trim().split(/\s+/);
+  const words = String(text).replace(/\^/g, "").trim().split(/\s+/).filter(Boolean);
   const lines: string[] = [];
+  const maxChars = Math.max(1, Math.floor(limit / CHAR_W[size]));
   let line = "";
-  for (const w of words) {
-    const next = line ? `${line} ${w}` : w;
-    if (line && next.length * CHAR_W[size] > limit) {
-      lines.push(line);
-      line = w;
-    } else {
-      line = next;
+  for (const source of words) {
+    // Uma palavra técnica ou URL enorme também tem de caber no quadro.
+    const chunks = source.length > maxChars
+      ? source.match(new RegExp(".{1," + maxChars + "}", "g")) ?? [source]
+      : [source];
+    for (const word of chunks) {
+      const next = line ? line + " " + word : word;
+      if (line && next.length * CHAR_W[size] > limit) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
     }
   }
   if (line) lines.push(line);
