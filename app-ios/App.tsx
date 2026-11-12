@@ -238,7 +238,7 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
     <View style={s.cards}>
       {!!page.numbers?.length && (
         <View style={s.nums}>
-          {page.numbers.slice(0, compact ? 1 : 3).map((n, i) => (
+          {page.numbers.slice(0, compact ? 1 : 2).map((n, i) => (
             <View key={i} style={s.numPill}>
               <Text style={s.numLabel}>{n.label}</Text>
               <Text style={s.numValue}>{n.value}</Text>
@@ -249,20 +249,20 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
       {!!page.example && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Exemplo. </Text>
-          {page.example.slice(0, compact ? 105 : 220)}
+          {page.example.slice(0, compact ? 90 : 120)}
         </Text>
       )}
       {!compact && !!page.mistake && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Erro comum. </Text>
-          {page.mistake.wrong} <Text style={s.cardKey}>Certo: </Text>
-          {page.mistake.right}
+          {page.mistake.wrong.slice(0, 55)} <Text style={s.cardKey}>Certo: </Text>
+          {page.mistake.right.slice(0, 55)}
         </Text>
       )}
       {!!page.recap && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
-          {page.recap.lines.slice(0, compact ? 1 : 2).map((l, i) => (
+          {page.recap.lines.slice(0, 1).map((l, i) => (
             <Text key={i} style={s.recapLine}>
               • {l}
             </Text>
@@ -733,7 +733,7 @@ export default function App() {
         stepCount: steps.length,
         say: step.say,
         line: i === steps.length - 1 && lesson.check
-          ? writeOf(step).split("\n").slice(0, 3).join("\n")
+          ? writeOf(step).split("\n").slice(0, 2).join("\n")
           : writeOf(step),
         recap: step.recap,
         numbers: step.numbers,
@@ -1236,7 +1236,7 @@ export default function App() {
           )}
         </View>
 
-        <View style={[s.lineBox, pg.check && { maxHeight: 190 }]}>
+        <View style={[s.lineBox, { maxHeight: pg.check ? 180 : 290 }]}>
           {pg.state === "done" ? (
             <NoteText text={pg.line} />
           ) : visibleLine ? (
