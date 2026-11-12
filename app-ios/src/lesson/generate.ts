@@ -75,7 +75,7 @@ async function writeCache(key: string, lesson: Lesson) {
 const KNOWN = new Set([
   "title", "text", "note", "line", "arrow", "callout", "box", "ellipse",
   "curve", "polygon", "notes", "graph", "axes", "underline", "highlight",
-  "dot", "model3d", "erase", "clear",
+  "dot", "motion", "model3d", "erase", "clear",
 ]);
 
 function num(v: any, d: number): number {
@@ -164,6 +164,28 @@ export function sanitizeOps(raw: any): Op[] {
           color: o.color,
         });
         break;
+      case "motion": {
+        const points = Array.isArray(o.points)
+          ? o.points.slice(0, 8).map((p: any) => {
+              const q = pt(p, [50, 38]);
+              return [
+                Math.max(1, Math.min(99, q[0])),
+                Math.max(1, Math.min(74, q[1])),
+              ] as [number, number];
+            })
+          : [];
+        if (points.length >= 2) {
+          out.push({
+            op: "motion",
+            points,
+            label: o.label ? String(o.label).replace(/\\s+/g, " ").trim().slice(0, 32) : undefined,
+            color: o.color,
+            radius: Math.max(0.8, Math.min(3.5, num(o.radius, 1.8))),
+            trail: o.trail !== false,
+          });
+        }
+        break;
+      }
       case "curve": {
         const points = pts(o.points);
         if (points.length >= 2) out.push({ op: "curve", points, color: o.color });
