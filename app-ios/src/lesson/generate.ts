@@ -481,6 +481,15 @@ const LESSON_SCHEMA = {
         lines: { type: "array", minItems: 2, maxItems: 3, items: { type: "string" } },
       },
     },
+    check: {
+      type: "object",
+      properties: {
+        prompt: { type: "string" },
+        options: { type: "array", minItems: 2, maxItems: 4, items: { type: "string" } },
+        answer_index: { type: "integer", minimum: 0, maximum: 3 },
+        explanation: { type: "string" },
+      },
+    },
     board: {
       type: "array",
       minItems: 4,
