@@ -127,6 +127,14 @@ export type Op =
       title?: string;
       color?: Ink;
     }
+  | {
+      op: "motion";
+      points: Pt[];
+      label?: string;
+      color?: Ink;
+      radius?: number;
+      trail?: boolean;
+    }
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
   | { op: "dot"; at: Pt; label?: string; label_at?: Pt; color?: Ink }
