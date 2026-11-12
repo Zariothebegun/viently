@@ -9,8 +9,6 @@ import type { Item, Op, Pt, Size } from "./ops";
 type Box = [number, number, number, number];
 type Placed = { b: Box; w: number };
 
-const TEXT_H: Record<Size, number> = { s: 3.6, m: 5.5, l: 6.4, xl: 7.6 };
-
 export function opBBox(op: any): Box | null {
   const k = op.op;
   if (k === "title") return [8, 1, 92, 13];
@@ -49,7 +47,29 @@ export function opBBox(op: any): Box | null {
   }
   if (k === "box" || k === "ellipse" || k === "axes") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
-    return [x, y, x + (op.w ?? 20), y + (op.h ?? 10)];
+    const w = Number(op.w ?? 20);
+    const h = Number(op.h ?? 10);
+    if (k === "axes") {
+      // Os nomes dos eixos são desenhados fora do rectângulo principal.
+      return [x - 12, y - 9, x + w + 30, y + h + 9];
+    }
+    let bounds: Box = [x, y, x + w, y + h];
+    if (op.label) {
+      const size: Size = op.size ?? "m";
+      const maxW = w * (k === "ellipse" ? 0.76 : 0.9);
+      const lines = wrapText(String(op.label), size, maxW);
+      const labelW = Math.min(maxW, ...lines.map((line) => line.length * CHAR_W[size]));
+      const labelH = lines.length * LINE_H[size];
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      bounds = [
+        Math.min(bounds[0], cx - labelW / 2),
+        Math.min(bounds[1], cy - labelH / 2),
+        Math.max(bounds[2], cx + labelW / 2),
+        Math.max(bounds[3], cy + labelH / 2),
+      ];
+    }
+    return bounds;
   }
   if (k === "model3d") {
     const [x, y] = (op.at ?? [58, 16]) as Pt;
@@ -98,11 +118,11 @@ export function opBBox(op: any): Box | null {
     let h = 1.5;
     let w = 8;
     for (const l of lines) {
-      const cw = l.size === "m" ? 1.9 : 1.45;
-      const n = Math.max(1, Math.ceil((l.t.length * cw) / maxW));
-      const base = l.size === "m" ? 6.2 : compact ? 4.0 : 5.2;
-      h += base + (n - 1) * (compact ? 3.2 : 3.9);
-      w = Math.max(w, Math.min(l.t.length * cw + 3, 42));
+      const wrapped = wrapText(l.t, l.size, maxW);
+      const base = l.size === "m" ? (compact ? 4.8 : 6.2) : compact ? 4.0 : 5.2;
+      h += base + (wrapped.length - 1) * (compact ? 3.2 : 3.9);
+      const rowW = Math.max(...wrapped.map((line) => line.length * CHAR_W[l.size]));
+      w = Math.max(w, Math.min(rowW + 3, maxW + 3));
     }
     return [x - 1, y - 3, x + w, y + h];
   }
@@ -110,6 +130,18 @@ export function opBBox(op: any): Box | null {
     const [x, y] = (op.label_at ?? op.to ?? [55, 35]) as Pt;
     const w = Math.min(String(op.label).length * 1.45, 28);
     return [x - w / 2, y - 2.5, x + w / 2, y + 2.5];
+  }
+  if (k === "dot" && op.at && op.label) {
+    const [x, y] = op.at as Pt;
+    const label = String(op.label);
+    const lines = wrapText(label, "s");
+    const w = Math.min(52, ...lines.map((line) => line.length * CHAR_W.s));
+    const h = lines.length * LINE_H.s;
+    const center = !!op.label_at;
+    const [lx, ly] = (op.label_at ?? [x + 2.5, y - 2.5]) as Pt;
+    const x0 = center ? lx - w / 2 : lx;
+    return [Math.min(x - 1.2, x0), Math.min(y - 1.2, ly - h / 2),
+      Math.max(x + 1.2, x0 + w), Math.max(y + 1.2, ly + h / 2)];
   }
   return null;
 }
