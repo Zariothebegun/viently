@@ -145,7 +145,10 @@ function writeOf(step: Step): string {
     .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
-  return s.slice(0, 220);
+  if (s.length <= 220) return s;
+  const cut = s.slice(0, 220);
+  const end = cut.lastIndexOf(" ");
+  return cut.slice(0, end > 150 ? end : 220).trimEnd() + "…";
 }
 
 function clamp01(v: number): number {
@@ -397,7 +400,7 @@ const StaticStep = memo(
                   {page.line}
                 </Text>
               )}
-              <PageCards page={page} />
+              <PageCards page={page} compact />
             </View>
           </>
         )}
@@ -1351,7 +1354,7 @@ export default function App() {
           ) : (
             <View style={s.linePlaceholder} />
           )}
-          {pg.state === "done" && <PageCards page={pg} />}
+          {pg.state === "done" && <PageCards page={pg} compact />}
         </View>}
 
         {!!pg.check && (
