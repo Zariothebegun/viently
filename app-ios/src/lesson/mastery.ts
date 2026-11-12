@@ -70,7 +70,7 @@ export function masteryProfile(store: MasteryStore | null | undefined, topic: st
   const evidence = `Histórico de avaliação neste tema: ${record.correct}/${record.attempts} respostas correctas; janela recente ${Math.round(recent * 100)}% (${record.recent.length} respostas).`;
 
   if (record.attempts < 3) {
-    return `${evidence} Evidência ainda limitada: confirma a compreensão com uma pergunta nova antes de acelerar ou simplificar muito.`;
+    return `${evidence} Evidência ainda limitada: não assumas domínio com uma resposta; confirma a compreensão com uma pergunta nova antes de acelerar ou simplificar muito.`;
   }
   if (recent < 0.5 || accuracy < 0.55) {
     return `${evidence} Há sinais de dificuldade. Reexplica o pré-requisito mais provável com linguagem simples, exemplo resolvido e uma verificação diferente; não repitas apenas a mesma pergunta.`;
