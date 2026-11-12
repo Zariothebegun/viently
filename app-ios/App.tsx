@@ -664,6 +664,7 @@ export default function App() {
             movePink(anchorOf(item.op, g));
             return;
           }
+          // Keep the pink guide cursor in step with the particle's actual path.
           if (item.op.op === "motion") {
             const points = item.op.points;
             const distances = points.slice(1).map((point, index) =>
