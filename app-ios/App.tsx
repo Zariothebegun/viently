@@ -541,8 +541,11 @@ export default function App() {
 
   function anchorOf(op: Op, g: Geom): { x: number; y: number } {
     const b = opBBox(op) ?? [42, 34, 58, 42];
-    const x = g.boardX + ((b[0] + b[2]) / 2 / 100) * g.bw;
-    const y = g.boardY + ((b[1] + b[3]) / 2 / 75) * g.bh;
+    const scale = Math.min(g.bw / 100, g.bh / 75);
+    const offsetX = (g.bw - 100 * scale) / 2;
+    const offsetY = (g.bh - 75 * scale) / 2;
+    const x = g.boardX + offsetX + ((b[0] + b[2]) / 2) * scale;
+    const y = g.boardY + offsetY + ((b[1] + b[3]) / 2) * scale;
     return {
       x: Math.max(16, Math.min(g.w - 16, x)),
       y: Math.max(16, Math.min(g.boardY + g.bh - 8, y)),
@@ -553,8 +556,11 @@ export default function App() {
   // sem tapar o que já está escrito
   function textAnchorOf(op: Op, g: Geom): { x: number; y: number } {
     const b = opBBox(op) ?? [12, 12, 40, 20];
-    const x = g.boardX + (b[0] / 100) * g.bw + 6;
-    const y = g.boardY + (b[1] / 75) * g.bh - 22;
+    const scale = Math.min(g.bw / 100, g.bh / 75);
+    const offsetX = (g.bw - 100 * scale) / 2;
+    const offsetY = (g.bh - 75 * scale) / 2;
+    const x = g.boardX + offsetX + b[0] * scale + 6;
+    const y = g.boardY + offsetY + b[1] * scale - 22;
     return {
       x: Math.max(14, Math.min(g.w - 14, x)),
       y: Math.max(18, Math.min(g.boardY + g.bh - 10, y)),
@@ -715,23 +721,14 @@ export default function App() {
   ): StepPage[] {
     const title = (lesson.title?.trim() || opts.root || "Aula").slice(0, 48);
     const steps = lesson.steps;
-    let items: Item[] = [];
     const out: StepPage[] = [];
 
     steps.forEach((step, i) => {
-      let before = items;
-      const hasClear = step.board.some((o) => o.op === "clear");
-      const erased = new Set(
-        step.board
-          .filter((o: any) => o.op === "erase" && !!o.id)
-          .map((o: any) => String(o.id)),
-      );
-      if (hasClear) before = [];
-      else if (erased.size) before = before.filter((it) => !erased.has(it.id));
-
+      // A página é autónoma. Não herda desenhos nem modelos 3D de páginas
+      // anteriores; cada gesto vertical revela uma nova composição completa.
+      const before: Item[] = [];
       const next = applyOps(before, step.board as Op[], nextSeed);
       const beforeIds = new Set(before.map((it) => it.id));
-      items = next;
 
       out.push({
         id: newPageId(),
