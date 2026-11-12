@@ -128,7 +128,7 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
               {target.model.author} · {target.model.licence}
             </Text>
             <Pressable onPress={() => Linking.openURL(target.model.page)} hitSlop={10}>
-              <Text style={s.creditLink}>sandflow.ai ↗</Text>
+              <Text style={s.creditLink}>ver modelo ↗</Text>
             </Pressable>
           </View>
         ) : (
