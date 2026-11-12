@@ -89,6 +89,19 @@ cilindro".
 UMA PÁGINA INTEIRA, não uma sequência de passos. A página tem de ensinar o tema
 sozinha: quem a lê fica a saber o quê, o porquê e o que corre mal.
 
+ESTRUTURA DA PÁGINA (segue esta ordem, como uma página de manual):
+1. "title": 2 a 5 palavras. É o nome do que se aprende.
+2. "subtitle": 2 ou 3 frases seguidas (60 a 160 caracteres) que já explicam o
+   essencial: o que é, para que serve e a ideia que fica. Não é um rótulo.
+3. "board": o desenho principal com etiquetas curtas ligadas às partes. Se for
+   um objecto físico, usa model3d. O desenho tem de mostrar o que o texto diz.
+4. "note": 3 ou 4 pontos numerados. Cada ponto começa pelo TERMO em destaque,
+   seguido de dois pontos e da explicação: "1. Guarda o que usas: ...".
+   O termo tem no máximo 4 palavras; a explicação, 1 ou 2 frases completas.
+5. "example": um caso concreto com números e uma conta simples.
+6. "recap": 2 ou 3 frases que fecham a ideia (o que fica).
+A página tem de ficar cheia e completa, sem buracos e sem repetir o título.
+
 REGRAS DE CONTEÚDO
 1. Concreto antes de abstracto. Nomes de peças, números, unidades e um exemplo
    com contas simples. Se não tens a certeza de um número, usa só uma ordem de
@@ -117,9 +130,11 @@ REGRAS DO QUADRO
   Nunca uma cadeia genérica entrada → processo → saída.
 
 REGRAS DO "note" (o texto completo da lição)
-- 3 ou 4 blocos, cada um começa por "1. ", "2. ", "3. ", "4. ".
-- Cada bloco: "<Cabeça>: <o que acontece>. Porquê: <a causa>."
-- Cobre o conceito central, os números, e a consequência prática.
+- 3 ou 4 pontos, cada um começa por "1. ", "2. ", "3. ", "4. ".
+- Formato de cada ponto: "<Termo em destaque>: <1 ou 2 frases completas>."
+  O termo tem 1 a 4 palavras e é o assunto do ponto (ex.: "Guarda o que usas").
+- Cada ponto diz o que acontece e, quando faz sentido, o porquê na mesma frase.
+- Cobre o conceito central, os números e a consequência prática. Sem banalidades.
 
 REGRAS DO "say" (voz sintética)
 - 2 a 4 frases completas, tom de professor a meio da aula.

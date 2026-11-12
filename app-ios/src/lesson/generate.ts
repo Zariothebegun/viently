@@ -281,6 +281,17 @@ export function sanitizeOps(raw: any): Op[] {
   return out;
 }
 
+// corta um texto no fim da última frase completa que cabe no limite
+function fitSentence(raw: string, max: number): string {
+  const text = String(raw).replace(/s+/g, " ").trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "));
+  if (end > 40) return cut.slice(0, end + 1).trim();
+  const space = cut.lastIndexOf(" ");
+  return (space > 40 ? cut.slice(0, space) : cut).trim() + ".";
+}
+
 function parseLesson(raw: string): Lesson {
   let text = raw.trim();
   // modelos às vezes embrulham em ```json
@@ -320,15 +331,15 @@ function parseLesson(raw: string): Lesson {
     const numbers = Array.isArray(data.numbers)
       ? data.numbers
           .map((n: any) => ({
-            label: String(n?.label ?? "").replace(/s+/g, " ").trim().slice(0, 30),
-            value: String(n?.value ?? "").replace(/s+/g, " ").trim().slice(0, 40),
+            label: String(n?.label ?? "").replace(/\s+/g, " ").trim().slice(0, 30),
+            value: String(n?.value ?? "").replace(/\s+/g, " ").trim().slice(0, 40),
           }))
           .filter((n: any) => n.label && n.value)
           .slice(0, 3)
       : [];
-    const example = String(data.example ?? "").replace(/s+/g, " ").trim().slice(0, 220);
-    const mw = String(data.mistake?.wrong ?? "").replace(/s+/g, " ").trim().slice(0, 160);
-    const mr = String(data.mistake?.right ?? "").replace(/s+/g, " ").trim().slice(0, 160);
+    const example = String(data.example ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const mw = String(data.mistake?.wrong ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const mr = String(data.mistake?.right ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
     const mistake = mw && mr ? { wrong: mw, right: mr } : undefined;
     steps.push({
       say: say || note.replace(/\s*\n\s*/g, " "),
@@ -386,9 +397,9 @@ function parseLesson(raw: string): Lesson {
     : [];
   return {
     title: data.title ? String(data.title).slice(0, 48) : undefined,
-    subtitle: data.subtitle
-      ? String(data.subtitle).replace(/\s+/g, " ").replace(/\.$/, "").slice(0, 80)
-      : undefined,
+    // o subtítulo é uma frase completa: corta no fim da última frase que cabe,
+    // nunca a meio de uma palavra
+    subtitle: data.subtitle ? fitSentence(String(data.subtitle), 190) : undefined,
     suggestions,
     check,
     steps: steps.slice(0, 10),

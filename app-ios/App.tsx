@@ -19,6 +19,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   PanResponder,
+  ScrollView,
   Platform,
   Pressable,
   SafeAreaView,
@@ -159,7 +160,7 @@ function geometry(w: number, h: number, hasQuiz: boolean): Geom {
   // a página é uma só: o quadro pode ocupar mais altura do que quando havia
   // vários passos, sem empurrar a pergunta para fora do ecrã
   const ratio = hasQuiz ? 0.9 : 0.98;
-  const bh = Math.round(Math.min(bw * ratio, h * 0.44));
+  const bh = Math.round(Math.min(bw * ratio, h * 0.38));
   const boardX = Math.round((w - bw) / 2);
   const boardY = 6 + HEAD_H;
   return { w, h, bw, bh, boardX, boardY };
@@ -189,6 +190,39 @@ function ChatIcon({ color = MINT, size = 15 }: { color?: string; size?: number }
       <Circle cx={12} cy={10.6} r={1} fill={color} />
       <Circle cx={15.6} cy={10.6} r={1} fill={color} />
     </Svg>
+  );
+}
+
+// o texto da lição: cada ponto numerado com o termo em destaque
+function NoteText({ text }: { text: string }) {
+  const lines = String(text)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return (
+    <View>
+      {lines.map((l, i) => {
+        const m = l.match(/^(\d+)\.\s*([^:]{1,40}):\s*(.*)$/);
+        if (!m) {
+          return (
+            <Text key={i} style={s.lineText}>
+              {l}
+            </Text>
+          );
+        }
+        return (
+          <View key={i} style={s.noteRow}>
+            <View style={s.noteNum}>
+              <Text style={s.noteNumTxt}>{m[1]}</Text>
+            </View>
+            <Text style={s.noteBody}>
+              <Text style={s.noteHead}>{m[2]}: </Text>
+              {m[3]}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -291,7 +325,7 @@ function HandHeading({
         {animate ? title.slice(0, n) : title}
       </Text>
       {!!subtitle && (
-        <Text style={[s.sub, !done && { opacity: 0 }]} numberOfLines={3}>
+        <Text style={[s.sub, !done && { opacity: 0 }]} numberOfLines={4}>
           {subtitle}
         </Text>
       )}
@@ -330,7 +364,7 @@ const StaticStep = memo(
             {page.title}
           </Text>
           {!!page.subtitle && (
-            <Text style={s.sub} numberOfLines={3}>
+            <Text style={s.sub} numberOfLines={4}>
               {page.subtitle}
             </Text>
           )}
@@ -393,6 +427,11 @@ export default function App() {
   const rafRef = useRef<number | null>(null);
   const playingIdRef = useRef<string | null>(null);
   const pagingRef = useRef(false);
+  // a página pode ser mais alta do que o ecrã: rola-se dentro dela e só se
+  // passa à seguinte quando o texto chega ao fim
+  const pageScroll = useRef<any>(null);
+  const scrollY = useRef(0);
+  const scrollMax = useRef(0);
   const loadingRef = useRef<Set<string>>(new Set());
   const cursorTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const voiceRef = useRef(voice);
@@ -876,10 +915,12 @@ export default function App() {
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_e, g) => {
         if (pagingRef.current || modelOpen) return false;
-        return (
-          Math.abs(g.dy) > 8 &&
-          Math.abs(g.dy) > Math.abs(g.dx) * 1.15
-        );
+        if (Math.abs(g.dy) <= 8 || Math.abs(g.dy) <= Math.abs(g.dx) * 1.15) return false;
+        // a rolar para cima com texto por ler: deixa rolar a página
+        if (g.dy < 0 && scrollY.current < scrollMax.current - 4) return false;
+        // a rolar para baixo com a página já no topo: deixa rolar a página
+        if (g.dy > 0 && scrollY.current > 4) return false;
+        return true;
       },
       onPanResponderGrant: () => {
         dragY.stopAnimation();
@@ -1165,6 +1206,18 @@ export default function App() {
     return (
       <View style={{ height: layout.h, overflow: "hidden" }}>
         <PagePaper />
+        <ScrollView
+          ref={pageScroll}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: 96 }}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onScroll={(e: any) => {
+            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+            scrollY.current = contentOffset.y;
+            scrollMax.current = Math.max(0, contentSize.height - layoutMeasurement.height);
+          }}
+        >
         <View style={[s.headBlock, { height: HEAD_H }]}>
           <HandHeading
             title={pg.title}
@@ -1201,13 +1254,14 @@ export default function App() {
         </View>
 
         <View style={s.lineBox}>
-          {visibleLine ? (
-            <Text style={s.lineText} numberOfLines={4}>
-              {visibleLine}
-            </Text>
+          {pg.state === "done" ? (
+            <NoteText text={pg.line} />
+          ) : visibleLine ? (
+            <Text style={s.lineText}>{visibleLine}</Text>
           ) : (
             <View style={s.linePlaceholder} />
           )}
+          {pg.state === "done" && <PageCards page={pg} />}
         </View>
 
         <View style={s.bottomArea}>
@@ -1228,6 +1282,7 @@ export default function App() {
             </View>
           )}
         </View>
+        </ScrollView>
       </View>
     );
   };
@@ -1516,6 +1571,20 @@ const s = StyleSheet.create({
     color: BODY,
   },
   lineNum: { color: "#8f978f" },
+  noteRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 8 },
+  noteNum: {
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+    backgroundColor: "#dfe9e2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 9,
+    marginTop: 1,
+  },
+  noteNumTxt: { fontFamily: QUICK, fontSize: 12, color: "#3d6b4a" },
+  noteBody: { flex: 1, fontFamily: QUICK, fontSize: 14.5, lineHeight: 20, color: BODY },
+  noteHead: { fontFamily: QUICK, color: "#2f3a33" },
   cards: { marginTop: 8 },
   nums: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6 },
   numPill: {
