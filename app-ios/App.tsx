@@ -34,6 +34,7 @@ import type { Check, Item, Lesson, Op, Step } from "./src/board/ops";
 import { generateLesson, DEFAULT_MODEL } from "./src/lesson/generate";
 import { recordCheckAnswer } from "./src/lesson/feedback";
 import { paginateLessonText } from "./src/lesson/pagination";
+import { getMasteryProfile, recordMasteryAttempt } from "./src/lesson/mastery";
 import { defaultKey, loadKey, looksLikeKey, saveKey } from "./src/lesson/key";
 import { seedLesson } from "./src/lesson/seed";
 import { Model3D } from "./src/three/Model3D";
@@ -908,7 +909,7 @@ export default function App() {
         question: p.question,
         key,
         pace: 3,
-        profile: "",
+        profile: await getMasteryProfile(p.root),
         boardNow: "",
         hasBoard: false,
         history: p.history,
@@ -1059,6 +1060,9 @@ export default function App() {
     const history = recordCheckAnswer(page.history, page.check, index);
     if (!history) return;
     patchPage(page.id, { answered: index, history });
+    // Regista evidência persistente por tema; a próxima explicação pode
+    // ajustar a profundidade sem assumir domínio com base numa única resposta.
+    void recordMasteryAttempt(page.root, index === page.check.answer_index);
   }
 
   function ask(text: string, continueCurrent = false) {
