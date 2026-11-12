@@ -231,14 +231,14 @@ function NoteText({ text }: { text: string }) {
 }
 
 // números-chave, exemplo, erro comum e resumo: o que faz a página ensinar
-function PageCards({ page }: { page: StepPage }) {
+function PageCards({ page, compact = false }: { page: StepPage; compact?: boolean }) {
   const hasAny = !!page.recap || !!page.example || !!page.mistake || !!page.numbers?.length;
   if (!hasAny) return null;
   return (
     <View style={s.cards}>
       {!!page.numbers?.length && (
         <View style={s.nums}>
-          {page.numbers.map((n, i) => (
+          {page.numbers.slice(0, compact ? 1 : 3).map((n, i) => (
             <View key={i} style={s.numPill}>
               <Text style={s.numLabel}>{n.label}</Text>
               <Text style={s.numValue}>{n.value}</Text>
@@ -262,7 +262,7 @@ function PageCards({ page }: { page: StepPage }) {
       {!!page.recap && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
-          {page.recap.lines.slice(0, 2).map((l, i) => (
+          {page.recap.lines.slice(0, compact ? 1 : 2).map((l, i) => (
             <Text key={i} style={s.recapLine}>
               • {l}
             </Text>
@@ -732,7 +732,9 @@ export default function App() {
         stepIndex: i,
         stepCount: steps.length,
         say: step.say,
-        line: writeOf(step),
+        line: i === steps.length - 1 && lesson.check
+          ? writeOf(step).split("\n").slice(0, 3).join("\n")
+          : writeOf(step),
         recap: step.recap,
         numbers: step.numbers,
         example: step.example,
@@ -1234,7 +1236,7 @@ export default function App() {
           )}
         </View>
 
-        <View style={[s.lineBox, pg.check && { maxHeight: 170 }]}>
+        <View style={[s.lineBox, pg.check && { maxHeight: 190 }]}>
           {pg.state === "done" ? (
             <NoteText text={pg.line} />
           ) : visibleLine ? (
@@ -1242,7 +1244,7 @@ export default function App() {
           ) : (
             <View style={s.linePlaceholder} />
           )}
-          {pg.state === "done" && <PageCards page={pg} />}
+          {pg.state === "done" && <PageCards page={pg} compact={!!pg.check} />}
         </View>
 
         {!!pg.check && (
