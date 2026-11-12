@@ -24,7 +24,7 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
    "series":[{"label":"...","color":"blue","points":[[0,10],[1,40]]}],
    "markers":[{"at":[2,40],"label":"..."}],"xlabel":"...","ylabel":"..."}
   {"op":"dot","at":[x,y],"label":"..."}
-  {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true,"start_ms":0,"duration_ms":1500}
+  {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true,"duration_ms":1500}
   {"op":"highlight","at":[x,y],"w":20}
 Cores: ink, blue, red, green, orange, purple, gray.
 Cores com significado: blue = entrada/dado, green = resultado, red = atenção,
