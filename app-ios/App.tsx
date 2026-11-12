@@ -45,7 +45,7 @@ const MINT = "#5878bd";
 const HAIR = "rgba(47,62,88,0.12)";
 const HAND = "GochiHand_400Regular";
 const QUICK = "Quicksand_400Regular";
-const HEAD_H = 104;
+const HEAD_H = 116;
 const TITLE_MS_PER_CHAR = 12;
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -374,24 +374,33 @@ const StaticStep = memo(
             </Text>
           )}
         </View>
-        <View style={{ width: g.bw, height: g.bh, alignSelf: "center" }}>
-          <Board
-            ops={boardOps(page)}
-            fracOf={() => 1}
-            width={g.bw}
-            height={g.bh}
-            paper={false}
-          />
-        </View>
-        <View style={s.lineBox}>
-          {!!page.line && (
-            <Text style={s.lineText} numberOfLines={12}>
-              <Text style={s.lineNum}>› </Text>
-              {page.line}
-            </Text>
-          )}
-          <PageCards page={page} />
-        </View>
+        {page.quizOnly ? (
+          <View style={[s.quiz, { marginTop: 18 }]}>
+            <Text style={s.quizKicker}>pergunta de revisão</Text>
+            <Text style={s.quizPrompt}>{page.check?.prompt}</Text>
+          </View>
+        ) : (
+          <>
+            <View style={{ width: g.bw, height: g.bh, alignSelf: "center" }}>
+              <Board
+                ops={boardOps(page)}
+                fracOf={() => 1}
+                width={g.bw}
+                height={g.bh}
+                paper={false}
+              />
+            </View>
+            <View style={s.lineBox}>
+              {!!page.line && (
+                <Text style={s.lineText} numberOfLines={12}>
+                  <Text style={s.lineNum}>› </Text>
+                  {page.line}
+                </Text>
+              )}
+              <PageCards page={page} />
+            </View>
+          </>
+        )}
       </View>
     );
   },
