@@ -542,6 +542,16 @@ export default function App() {
     };
   }
 
+  function screenPointOf(point: [number, number], g: Geom): { x: number; y: number } {
+    const scale = Math.min(g.bw / 100, g.bh / 75);
+    const offsetX = (g.bw - 100 * scale) / 2;
+    const offsetY = (g.bh - 75 * scale) / 2;
+    return {
+      x: g.boardX + offsetX + point[0] * scale,
+      y: g.boardY + offsetY + point[1] * scale,
+    };
+  }
+
   // o cursor pousa acima e à esquerda do bloco de texto, como quem escreve
   // sem tapar o que já está escrito
   function textAnchorOf(op: Op, g: Geom): { x: number; y: number } {
@@ -650,6 +660,25 @@ export default function App() {
         () => {
           if (item.op.op === "model3d") {
             movePink(anchorOf(item.op, g));
+            return;
+          }
+          if (item.op.op === "motion") {
+            const points = item.op.points;
+            const distances = points.slice(1).map((point, index) =>
+              Math.hypot(point[0] - points[index][0], point[1] - points[index][1]),
+            );
+            const totalDistance = distances.reduce((sum, distance) => sum + distance, 0) || 1;
+            pink.setValue(screenPointOf(points[0], g));
+            Animated.sequence(
+              distances.map((distance, index) =>
+                Animated.timing(pink, {
+                  toValue: screenPointOf(points[index + 1], g),
+                  duration: Math.max(30, Math.round(durs[i] * distance / totalDistance)),
+                  easing: Easing.linear,
+                  useNativeDriver: true,
+                }),
+              ),
+            ).start();
             return;
           }
           if (isTextOp(item.op)) moveBlue(textAnchorOf(item.op, g));
