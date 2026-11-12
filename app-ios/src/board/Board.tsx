@@ -250,153 +250,101 @@ function GraphOp({
   seed: number;
   t: Timing;
 }) {
-  const rnd = mulberry32(seed);
   const [x, y] = (op.at ?? [12, 22]) as Pt;
-  const w = op.w ?? 56;
-  const h = op.h ?? 34;
+  const w = Math.max(12, op.w ?? 58);
+  const h = Math.max(12, op.h ?? 38);
   const [xmin, xmax] = (op.x_range ?? [0, 1]) as Pt;
   const [ymin, ymax] = (op.y_range ?? [0, 1]) as Pt;
-  const xspan = Math.max(1e-9, xmax - xmin);
-  const yspan = Math.max(1e-9, ymax - ymin);
-  const map = (p: Pt): Pt => [
-    x + clamp01((p[0] - xmin) / xspan) * w,
-    y + h - clamp01((p[1] - ymin) / yspan) * h,
+  const xs = xmax > xmin ? xmax - xmin : 1;
+  const ys = ymax > ymin ? ymax - ymin : 1;
+  const map = (point: Pt): Pt => [
+    x + ((point[0] - xmin) / xs) * w,
+    y + h - ((point[1] - ymin) / ys) * h,
   ];
   const fmt = (v: number) => {
-    const a = Math.abs(v);
-    if (a >= 10000 || (a > 0 && a < 0.01)) return v.toExponential(1).replace(".", ",");
-    return String(Math.round(v * 100) / 100).replace(".", ",");
+    const n = Math.abs(v) < 0.001 ? 0 : v;
+    return Number(n.toFixed(2)).toLocaleString("pt-PT", { maximumFractionDigits: 2 });
   };
-
   const series = (Array.isArray(op.series) ? op.series : [])
     .slice(0, 4)
-    .filter((s: any) => (s?.points ?? []).length >= 2);
+    .map((s: any) => ({
+      ...s,
+      points: (Array.isArray(s.points) ? s.points : [])
+        .filter((p: any) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+        .slice()
+        .sort((a: Pt, b: Pt) => a[0] - b[0]),
+    }))
+    .filter((s: any) => s.points.length >= 2);
   const p = (i: number) => partFrac(t, frac, i);
-  const scaffold = p(0);
-  const ticks = p(1);
-  const labelP = p(2 + series.length);
-  const markerP = p(3 + series.length);
-  const titleP = p(4 + series.length);
-  const xlabelP = p(5 + series.length);
-  const ylabelP = p(6 + series.length);
+  const gridP = p(0);
+  const axisP = p(1);
+  const dataP = p(2);
+  const labelsP = p(3);
+  const zeroY = ymin <= 0 && ymax >= 0 ? map([xmin, 0])[1] : y + h;
+  const zeroX = xmin <= 0 && xmax >= 0 ? map([0, ymin])[0] : x;
+  const makeD = (points: Pt[], progress: number) => {
+    if (points.length < 2 || progress <= 0) return "";
+    const total = points.length - 1;
+    const upto = Math.max(1, Math.min(total, progress * total));
+    const full = Math.floor(upto);
+    const partial = upto - full;
+    const shown = points.slice(0, full + 1);
+    if (partial > 0 && full < total) {
+      const from = points[full];
+      const to = points[full + 1];
+      shown.push([from[0] + (to[0] - from[0]) * partial, from[1] + (to[1] - from[1]) * partial]);
+    }
+    return shown.map((pt, i) => `${i ? "L" : "M"} ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`).join(" ");
+  };
 
   return (
     <G>
       {[1, 2, 3, 4].map((i) => (
-        <React.Fragment key={`g${i}`}>
-          {stroked(jitterSeg(rnd, [x + (w * i) / 5, y], [x + (w * i) / 5, y + h], 0.4), scaffold, PALETTE.gray, W * 0.35)}
-          {stroked(jitterSeg(rnd, [x, y + (h * i) / 5], [x + w, y + (h * i) / 5], 0.4), scaffold, PALETTE.gray, W * 0.35)}
+        <React.Fragment key={`grid-${i}`}>
+          {stroked([[x + (w * i) / 5, y], [x + (w * i) / 5, y + h]], gridP, PALETTE.gray, W * 0.28)}
+          {stroked([[x, y + (h * i) / 5], [x + w, y + (h * i) / 5]], gridP, PALETTE.gray, W * 0.28)}
         </React.Fragment>
       ))}
-      {stroked(jitterSeg(rnd, [x, y], [x, y + h], 0.5), scaffold, PALETTE.ink)}
-      {stroked(jitterSeg(rnd, [x, y + h], [x + w, y + h], 0.5), scaffold, PALETTE.ink)}
-      {ticks > 0 &&
-        Array.from({ length: 6 }, (_, i) => (
-          <React.Fragment key={`t${i}`}>
-            <RevealText
-              text={fmt(xmin + (xspan * i) / 5)}
-              at={[x + (w * i) / 5, y + h + 4]}
-              size="s"
-              fill={PALETTE.gray}
-              frac={ticks}
-              align="center"
-              seed={seed + i}
-            />
-            {i % 2 === 0 && (
-              <RevealText
-                text={fmt(ymin + (yspan * i) / 5)}
-                at={[x - 3, y + h - (h * i) / 5]}
-                size="s"
-                fill={PALETTE.gray}
-                frac={ticks}
-                align="center"
-                seed={seed + 20 + i}
-              />
-            )}
-          </React.Fragment>
-        ))}
-      {series.map((s: any, si: number) => {
-        const local = p(2 + si);
-        const pts = (s.points ?? []).map(map);
-        if (pts.length < 2 || local <= 0) return null;
-        const smooth = catmullRom(pts).map(
-          (q) => [q[0] + (rnd() - 0.5) * 0.3, q[1] + (rnd() - 0.5) * 0.3] as Pt,
-        );
+      {stroked([[x, zeroY], [x + w, zeroY]], axisP, PALETTE.ink, W * 0.95)}
+      {stroked([[zeroX, y + h], [zeroX, y]], axisP, PALETTE.ink, W * 0.95)}
+      {axisP > 0 && Array.from({ length: 5 }, (_, i) => {
+        const xv = xmin + (xs * i) / 4;
+        const yv = ymin + (ys * i) / 4;
+        const xp = x + (w * i) / 4;
+        const yp = y + h - (h * i) / 4;
         return (
-          <React.Fragment key={`s${si}`}>
-            {stroked(smooth, local, color(s.color ?? "blue"), W * 1.25)}
+          <React.Fragment key={`tick-${i}`}>
+            <Line x1={xp} y1={zeroY - 0.7} x2={xp} y2={zeroY + 0.7} stroke={PALETTE.ink} strokeWidth={0.35} />
+            <Line x1={zeroX - 0.7} y1={yp} x2={zeroX + 0.7} y2={yp} stroke={PALETTE.ink} strokeWidth={0.35} />
+            {i % 2 === 0 && (
+              <>
+                <RevealText text={fmt(xv)} at={[xp, Math.min(74, zeroY + 3.3)]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + i} />
+                <RevealText text={fmt(yv)} at={[Math.max(2, zeroX - 3.2), yp]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + 20 + i} />
+              </>
+            )}
           </React.Fragment>
         );
       })}
-      {labelP > 0 &&
-        series.map((s: any, si: number) =>
-          s.label ? (
-            <RevealText
-              key={`sl${si}`}
-              text={String(s.label)}
-              at={[x + w - 12, y + 2 + si * 4.2]}
-              size="s"
-              fill={color(s.color ?? "blue")}
-              frac={labelP}
-              seed={seed + 40 + si}
-              fitW={14}
-            />
-          ) : null,
-        )}
-      {markerP > 0 &&
-        (Array.isArray(op.markers) ? op.markers : []).slice(0, 6).map((m: any, i: number) => {
-          const [mx, my] = map(m.at);
-          return (
-            <G key={`m${i}`}>
-              <Circle cx={mx} cy={my} r={0.9} fill={color(m.color ?? "orange")} />
-              {m.label && (
-                <RevealText
-                  text={String(m.label)}
-                  at={[mx + 2, my - 3]}
-                  size="s"
-                  fill={color(m.color ?? "orange")}
-                  frac={markerP}
-                  seed={seed + 60 + i}
-                />
-              )}
-            </G>
-          );
-        })}
-      {titleP > 0 && op.title && (
-        <RevealText
-          text={op.title}
-          at={[x + w / 2, y - 5]}
-          size="m"
-          fill={PALETTE.ink}
-          frac={titleP}
-          align="center"
-          fitW={w * 0.9}
-          seed={seed + 80}
-        />
-      )}
-      {xlabelP > 0 && op.xlabel && (
-        <RevealText
-          text={op.xlabel}
-          at={[x + w / 2, y + h + 8.5]}
-          size="s"
-          fill={PALETTE.gray}
-          frac={xlabelP}
-          align="center"
-          seed={seed + 81}
-          fitW={w}
-        />
-      )}
-      {ylabelP > 0 && op.ylabel && (
-        <RevealText
-          text={op.ylabel}
-          at={[x - 2, y - 4]}
-          size="s"
-          fill={PALETTE.gray}
-          frac={ylabelP}
-          align="center"
-          seed={seed + 82}
-        />
-      )}
+      {series.map((s: any, i: number) => {
+        const pts = s.points.map(map);
+        const d = makeD(pts, dataP);
+        if (!d) return null;
+        return <Path key={`series-${i}`} d={d} stroke={color(s.color ?? (i === 0 ? "blue" : "purple"))} strokeWidth={W * 1.55} strokeLinecap="round" strokeLinejoin="round" fill="none" />;
+      })}
+      {(Array.isArray(op.markers) ? op.markers : []).slice(0, 8).map((m: any, i: number) => {
+        if (!Array.isArray(m.at)) return null;
+        const [mx, my] = map(m.at as Pt);
+        if (mx < x || mx > x + w || my < y || my > y + h) return null;
+        return (
+          <G key={`marker-${i}`}>
+            <Circle cx={mx} cy={my} r={1.25} fill={color(m.color ?? "orange")} />
+            {m.label && <RevealText text={String(m.label)} at={[mx + 2, my - 2.5]} size="s" fill={color(m.color ?? "orange")} frac={labelsP} seed={seed + 60 + i} />}
+          </G>
+        );
+      })}
+      {op.title && <RevealText text={String(op.title)} at={[x + w / 2, y - 5]} size="m" fill={PALETTE.ink} frac={labelsP} align="center" seed={seed + 80} fitW={w * 0.9} />}
+      {op.xlabel && <RevealText text={String(op.xlabel)} at={[x + w / 2, Math.min(74, y + h + 5.5)]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + 81} fitW={w} />}
+      {op.ylabel && <RevealText text={String(op.ylabel)} at={[x - 2, y - 4]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + 82} />}
     </G>
   );
 }
