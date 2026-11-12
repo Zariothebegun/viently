@@ -200,7 +200,7 @@ export function sanitizeOps(raw: any): Op[] {
           const child = sanitizeOps([element.op])[0];
           if (!child) continue;
           elements.push({
-            at_ms: Math.max(0, Math.min(8000, Math.round(num(element.at_ms, 0)))),
+            at_ms: Math.max(0, Math.min(5000, Math.round(num(element.at_ms, 0)))),
             duration_ms: Math.max(100, Math.min(5000, Math.round(num(element.duration_ms, 900)))),
             op: child,
           });
