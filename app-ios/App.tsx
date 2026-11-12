@@ -664,7 +664,7 @@ export default function App() {
             movePink(anchorOf(item.op, g));
             return;
           }
-          // The guide cursor follows the same segment sequence as the particle;
+          // The guide cursor follows the same segment sequence as the particle.
           // stopPlayback() cancels both if the student leaves this page.
           if (item.op.op === "motion") {
             const points = item.op.points;
