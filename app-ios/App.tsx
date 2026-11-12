@@ -135,10 +135,10 @@ function writeOf(step: Step): string {
     .map((l) => l.replace(/[ \t]+/g, " ").trim())
     .filter(Boolean)
     .join("\n")
-    .split("\\n")
+    .split("\n")
     .slice(0, 4)
     .map((line) => line.slice(0, 190))
-    .join("\\n")
+    .join("\n")
     .slice(0, 760);
   if (w) return w;
   const s = (step.say ?? "")
