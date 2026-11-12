@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Check, Lesson, Op, Step } from "../board/ops";
+import type { Check, Lesson, Op, Size, Step } from "../board/ops";
 import { isModelId } from "../three/models";
 import { lessonSystem } from "./prompt";
 
@@ -81,6 +81,12 @@ const KNOWN = new Set([
 function num(v: any, d: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
+}
+
+function safeSize(value: any, fallback: Size = "m"): Size {
+  return value === "s" || value === "m" || value === "l" || value === "xl"
+    ? value
+    : fallback;
 }
 
 function pt(v: any, d: [number, number]): [number, number] {
@@ -227,7 +233,8 @@ export function sanitizeOps(raw: any): Op[] {
           op: "polygon",
           points,
           label: o.label ? String(o.label).slice(0, 32) : undefined,
-          side_labels: Array.isArray(o.side_labels) ? o.side_labels.slice(0, 8).map(String) : undefined,
+          side_labels: Array.isArray(o.side_labels) ? o.side_labels.slice(0, 8).map((v: any) => String(v).slice(0, 32)) : undefined,
+          size: safeSize(o.size),
           color: o.color,
         });
         break;
