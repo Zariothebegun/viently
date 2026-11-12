@@ -495,6 +495,7 @@ export default function App() {
   function fastDur(item: Item): number {
     // as durações do caderno (timeline.ts) são de leitura calma; aqui o
     // desenho é comprimido para caber em menos de um segundo por passo
+    if (item.op.op === "motion") return 1500;
     const base = item.op.op === "graph" || item.op.op === "notes" ? 1.4 : 1;
     return Math.round(Math.max(70, Math.min(300, 150 * base)));
   }
