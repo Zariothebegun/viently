@@ -471,6 +471,24 @@ function renderOp(item: Item, frac: number): React.ReactNode {
       );
     }
 
+    case "scene": {
+      const duration = Math.max(1, Number(o.duration_ms) || 1);
+      return (
+        <G key={item.id}>
+          {(o.elements ?? []).map((element: any, index: number) => {
+            const childDuration = Math.max(1, Number(element.duration_ms) || 1);
+            const elapsed = frac * duration - Math.max(0, Number(element.at_ms) || 0);
+            const childFrac = clamp01(elapsed / childDuration);
+            if (childFrac <= 0) return null;
+            return renderOp(
+              { id: item.id + "-scene-" + index, seed: seed + (index + 1) * 37, op: element.op },
+              childFrac,
+            );
+          })}
+        </G>
+      );
+    }
+
     case "arrow": {
       return (
         <G key={item.id}>
