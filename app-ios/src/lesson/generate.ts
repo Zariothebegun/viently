@@ -311,7 +311,7 @@ export function sanitizeOps(raw: any): Op[] {
 
 // corta um texto no fim da última frase completa que cabe no limite
 function fitSentence(raw: string, max: number): string {
-  const text = String(raw).replace(/\\s+/g, " ").trim();
+  const text = String(raw).replace(/\s+/g, " ").trim();
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "));
