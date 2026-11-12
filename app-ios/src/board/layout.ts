@@ -11,7 +11,7 @@ type Placed = { b: Box; w: number };
 
 export function opBBox(op: any): Box | null {
   const k = op.op;
-  if (k === "title") return [8, 1, 92, 13];
+  if (k === "title") {\n    const lines = wrapText(String(op.text ?? ""), "xl", 86);\n    const h = lines.length * LINE_H.xl;\n    return [7, 7.5 - h / 2, 93, 7.5 + h / 2 + 2];\n  }
   if (k === "text" || k === "note") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
     const size: Size = k === "note" ? "s" : (op.size ?? "m");
@@ -36,14 +36,14 @@ export function opBBox(op: any): Box | null {
     return [
       Math.max(0, Math.min(...xs) - 3),
       Math.max(0, Math.min(...ys) - 7),
-      Math.min(100, Math.max(...xs) + 3 + labelPad),
+      Math.min(100, Math.max(...xs) + 3 + Math.min(52, String(op.label ?? "").length * CHAR_W.s)),
       Math.min(75, Math.max(...ys) + 3),
     ];
   }
   if (k === "graph") {
     const [x, y] = (op.at ?? [12, 22]) as Pt;
     // inclui a faixa do título e dos eixos, senão o texto cai em cima deles
-    return [x - 12, y - 9, x + (op.w ?? 44) + 5, y + (op.h ?? 30) + 11];
+    return [x - 20, y - 9, x + (op.w ?? 44) + 5, y + (op.h ?? 30) + 11];
   }
   if (k === "box" || k === "ellipse" || k === "axes") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
@@ -125,6 +125,15 @@ export function opBBox(op: any): Box | null {
       w = Math.max(w, Math.min(rowW + 3, maxW + 3));
     }
     return [x - 1, y - 3, x + w, y + h];
+  }
+  if (k === "arrow" && op.label) {
+    const from = (op.from ?? [0, 0]) as Pt;
+    const to = (op.to ?? [10, 10]) as Pt;
+    const [x, y] = (op.label_at ?? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2 - 3.4]) as Pt;
+    const lines = wrapText(String(op.label), "s");
+    const w = Math.min(52, ...lines.map((line) => line.length * CHAR_W.s));
+    const h = lines.length * LINE_H.s;
+    return [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
   }
   if (k === "callout" && op.label) {
     const [x, y] = (op.label_at ?? op.to ?? [55, 35]) as Pt;
@@ -489,6 +498,28 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       if (kind === "arrow") capArrow(op);
       for (const [x, y] of segSamples(op.from, op.to, 5)) {
         placed.push({ b: [x - 2.2, y - 2.2, x + 2.2, y + 2.2], w: 0.25 });
+      }
+      if (kind === "arrow" && op.label) {
+        const base: Pt = op.label_at ?? [
+          (op.from[0] + op.to[0]) / 2,
+          (op.from[1] + op.to[1]) / 2 - 3.4,
+        ];
+        const lines = wrapText(String(op.label), "s");
+        const w = Math.min(52, ...lines.map((line) => line.length * CHAR_W.s));
+        const h = lines.length * LINE_H.s;
+        let best = { pos: base, sc: Infinity };
+        for (const [dx, dy] of LABEL_CANDIDATES) {
+          const pos = clampPt([base[0] + dx, base[1] + dy]);
+          const b: Box = [pos[0] - w / 2, pos[1] - h / 2, pos[0] + w / 2, pos[1] + h / 2];
+          const sc = score(b, placed);
+          if (sc < best.sc) best = { pos, sc };
+          if (sc <= 0.5) break;
+        }
+        op.label_at = best.pos;
+        placed.push({
+          b: [best.pos[0] - w / 2, best.pos[1] - h / 2, best.pos[0] + w / 2, best.pos[1] + h / 2],
+          w: 1,
+        });
       }
     } else if (kind === "callout") {
       op.around = shiftPt(op.around ?? [50, 38], displaced);
