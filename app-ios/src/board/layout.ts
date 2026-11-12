@@ -235,7 +235,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   for (const raw of ops) {
     const op: any = { ...raw };
     const kind = op.op;
-    const stroke = ["curve", "line", "arrow"].includes(kind);
+    const stroke = ["curve", "line", "arrow", "motion"].includes(kind);
     const ylo = hasTitle && stroke ? 16.5 : 3;
     if (op.at) op.at = clampPt(op.at);
     if (op.from) op.from = clampPt(op.from, ylo);
@@ -442,7 +442,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       for (const [x, y] of segSamples(op.around, op.to, 5)) {
         placed.push({ b: [x - 1.8, y - 1.8, x + 1.8, y + 1.8], w: 0.2 });
       }
-    } else if (kind === "curve" || kind === "polygon") {
+    } else if (kind === "curve" || kind === "polygon" || kind === "motion") {
       let pts: Pt[] = [...(op.points ?? [])];
       if (kind === "polygon" && pts.length >= 3) pts = [...pts, pts[0]];
       if (pts.some(insideModel) || pts.some((p, i) => i > 0 && crossesModel(pts[i - 1], p))) {
