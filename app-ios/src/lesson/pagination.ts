@@ -2,7 +2,7 @@
 const DEFAULT_PAGE_CHARS = 210;
 
 export function paginateLessonText(value: string, maxChars = DEFAULT_PAGE_CHARS): string[] {
-  const text = String(value ?? "").replace(/\\s+/g, " ").trim();
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
   const limit = Math.max(40, Math.floor(Number.isFinite(maxChars) ? maxChars : DEFAULT_PAGE_CHARS));
   if (!text) return [];
 
