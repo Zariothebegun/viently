@@ -21,7 +21,7 @@ const EMPTY: MasteryStore = { version: 1, topics: {} };
 export function normalizeTopic(topic: string): string {
   return String(topic ?? "")
     .normalize("NFKD")
-    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
