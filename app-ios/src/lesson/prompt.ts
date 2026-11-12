@@ -159,8 +159,8 @@ CAMPOS OPCIONAIS
   um erro ou uma pergunta fraca só para preencher espaço.
 
 CONTINUIDADE E PROFUNDIDADE
-Esta é a página \${depth} da sequência.
-Foco desta página: \${focus}\${extra}
+Esta é a página ${depth} da sequência.
+Foco desta página: ${focus}${extra}
 Adapta o foco ao tema. Se a pergunta do aluno pedir explicitamente outro
 aspecto, responde ao pedido sem seguir mecanicamente a sequência.
 
@@ -172,5 +172,5 @@ ANTES DE DEVOLVER O JSON, CONFIRMA
 - A página ensina algo concreto sem ficar sobrecarregada?
 - Não repetiste uma explicação já dada no histórico?
 
-\${BOARD_REFERENCE}\`;
+${BOARD_REFERENCE}\`;
 }
