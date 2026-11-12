@@ -32,6 +32,7 @@ import { Board } from "./src/board/Board";
 import { applyOps, opBBox } from "./src/board/layout";
 import type { Check, Item, Lesson, Op, Step } from "./src/board/ops";
 import { generateLesson, DEFAULT_MODEL } from "./src/lesson/generate";
+import { recordCheckAnswer } from "./src/lesson/feedback";
 import { defaultKey, loadKey, looksLikeKey, saveKey } from "./src/lesson/key";
 import { seedLesson } from "./src/lesson/seed";
 import { Model3D } from "./src/three/Model3D";
@@ -1039,21 +1040,9 @@ export default function App() {
   // pedidos
 
   function answerCheck(page: StepPage, index: number) {
-    if (!page.check || page.answered !== undefined || index < 0 || index >= page.check.options.length) return;
-    const correct = index === page.check.answer_index;
-    const selected = page.check.options[index];
-    const explanation = page.check.explanation ?? "";
-    const history: Msg[] = [
-      ...page.history,
-      {
-        role: "user",
-        content: `No teste "${page.check.prompt}", escolhi "${selected}".`,
-      },
-      {
-        role: "assistant",
-        content: `A resposta estava ${correct ? "correcta" : "incorrecta"}. ${explanation}`.trim(),
-      },
-    ];
+    if (!page.check || page.answered !== undefined) return;
+    const history = recordCheckAnswer(page.history, page.check, index);
+    if (!history) return;
     patchPage(page.id, { answered: index, history });
   }
 
