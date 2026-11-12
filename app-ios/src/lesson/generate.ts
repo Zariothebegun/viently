@@ -182,6 +182,8 @@ export function sanitizeOps(raw: any): Op[] {
             color: ["ink", "blue", "red", "green", "orange", "purple", "gray", "yellow"].includes(o.color) ? o.color : "blue",
             radius: Math.max(0.8, Math.min(3.5, num(o.radius, 1.8))),
             trail: o.trail !== false,
+            start_ms: o.start_ms != null ? Math.max(0, Math.min(6000, Math.round(num(o.start_ms, 0)))) : undefined,
+            duration_ms: o.duration_ms != null ? Math.max(250, Math.min(5000, Math.round(num(o.duration_ms, 1500)))) : undefined,
           });
         }
         break;
