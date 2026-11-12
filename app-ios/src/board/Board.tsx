@@ -1,4 +1,24 @@
 import React from "react";
+
+class OpBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    // Um elemento SVG inválido não deve derrubar a página inteira.
+    if (__DEV__) console.warn("Viently: elemento visual ignorado", error.message);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as T } from "react-native-svg";
 import {
   CHAR_W,
@@ -803,13 +823,16 @@ function renderOp(item: Item, frac: number, onHotspotPress?: (id: string) => voi
       const [x, y] = o.at as Pt;
       const selected = activeHotspot === item.id;
       const c = color(o.color ?? "orange");
+      const label = String(o.label ?? "");
+      const labelW = Math.min(52, label.length * CHAR_W.s);
+      const labelX = x > 62 ? Math.max(2, x - 4 - labelW) : Math.min(98 - labelW, x + 4);
       return (
         <G key={item.id}>
           <Circle cx={x} cy={y} r={selected ? 4.1 : 3.2} fill={c} opacity={0.13} />
           <Circle cx={x} cy={y} r={2.2} fill="none" stroke={c} strokeWidth={selected ? 0.9 : 0.65} />
           <Circle cx={x} cy={y} r={0.85} fill={c} />
           <Circle cx={x} cy={y} r={5.5} fill="transparent" onPress={() => onHotspotPress?.(item.id)} />
-          <RevealText text={String(o.label)} at={[Math.min(91, x + 4), Math.max(5, y - 3.5)]} size="s" fill={c} frac={1} seed={seed + 1} />
+          <RevealText text={label} at={[labelX, Math.max(5, y - 3.5)]} size="s" fill={c} frac={1} seed={seed + 1} fitW={labelW} />
         </G>
       );
     }
@@ -910,7 +933,11 @@ export function Board({
   return (
     <Svg width={width} height={height} viewBox={`0 0 ${LOGICAL_W} ${LOGICAL_H}`}>
       {paper && <Paper width={width} height={height} />}
-      {ops.map((item) => renderOp(item, fracOf(item), onHotspotPress, activeHotspot))}
+      {ops.map((item) => (
+        <OpBoundary key={item.id}>
+          <G>{renderOp(item, fracOf(item), onHotspotPress, activeHotspot)}</G>
+        </OpBoundary>
+      ))}
     </Svg>
   );
 }
