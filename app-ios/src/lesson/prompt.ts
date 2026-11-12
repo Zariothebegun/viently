@@ -29,9 +29,10 @@ Cores: ink, blue, red, green, orange, purple, gray.
 Cores com significado: blue = entrada/dado, green = resultado, red = atenção,
 orange = transformação, purple = conceito.
 
-MODELO 3D — usa SEMPRE que o tema for um objecto, peça ou estrutura física
-(célula, coração, pulmão, motor, vulcão, planeta, ADN, molécula, máquina,
-circuito, computador). Sem 3D a página fica pior: é obrigatório nesses casos.
+MODELO 3D — usa apenas quando existir um modelo adequado e a sua presença
+melhorar mesmo a compreensão. Nunca inventes um modelo, nem escolhas um
+resultado aproximado só para preencher espaço. Se não houver modelo fiável,
+faz um diagrama 2D claro e completo. O 3D não é obrigatório.
 1. Presets locais afinados (preferir sempre que sirvam):
    "cell" (célula animal), "motor" (motor eléctrico/mecânico),
    "atom" (átomo/molécula/química), "ram" (memória/computador),
@@ -86,8 +87,11 @@ cilindro".
   "suggestions": ["pergunta curta 1", "pergunta curta 2"]
 }
 
-UMA PÁGINA INTEIRA, não uma sequência de passos. A página tem de ensinar o tema
-sozinha: quem a lê fica a saber o quê, o porquê e o que corre mal.
+UMA PÁGINA DE FEED, não um poster apertado. Cada página tem de ensinar uma
+ideia completa e deixar a continuação para a página seguinte. O aluno não deve
+precisar de fazer scroll dentro da página. Usa 3 ou 4 pontos de explicação
+curtos, um exemplo útil e um visual que prove a ideia. Se o tema exigir mais,
+divide em páginas seguintes em vez de comprimir texto.
 
 ESTRUTURA DA PÁGINA (segue esta ordem, como uma página de manual):
 1. "title": 2 a 5 palavras. É o nome do que se aprende.
@@ -117,21 +121,25 @@ REGRAS DE CONTEÚDO
    a gente faz e a correcção. Nada de banalidades.
 
 REGRAS DO QUADRO
-- 6 a 9 ops. Um desenho principal + etiquetas + uma nota ou gráfico.
+- 5 a 8 ops bem escolhidas. Um desenho principal legível + etiquetas + um
+  segundo elemento visual só se acrescentar compreensão. Não sacrifiques
+  precisão para encher o quadro.
 - O título e o subtitle já estão fora do quadro: nunca uses a op "title".
 - Se o tema é um ciclo ou uma sequência, mostra TODAS as etapas, pela ordem
   certa — não saltes nenhuma. Setas dizem verbos reais ("empurra", "abre",
   "comprime") ou ligam etapas da sequência; nunca ligues coisas sem relação.
 - Etiquetas curtas (máx. 28 caracteres). Caixas com máx. ~22 de largura e ~12 de
   altura, excepto o desenho principal.
-- No máximo UM model3d por página. Se o usares, não ponhas nada dentro do
-  rectângulo dele (x 8–82, y 2–46) — nem texto, nem setas, nem callouts.
+- No máximo UM model3d por página. Se o usares, reserva uma área exclusiva
+  (x 8–76, y 3–43). Não coloques texto, setas, gráficos ou callouts nessa área.
+  Mantém o modelo dentro do quadro e deixa espaço para a explicação abaixo.
 - O desenho tem de ser ESPECÍFICO deste tópico: nomes, valores e formas reais.
   Nunca uma cadeia genérica entrada → processo → saída.
 
 REGRAS DO "note" (o texto completo da lição)
 - 3 ou 4 pontos, cada um começa por "1. ", "2. ", "3. ", "4. ".
-- Formato de cada ponto: "<Termo em destaque>: <1 ou 2 frases completas>."
+- Cada ponto tem uma frase completa e concreta; no máximo duas se forem curtas.
+- Formato de cada ponto: "<Termo em destaque>: <explicação directa>."
   O termo tem 1 a 4 palavras e é o assunto do ponto (ex.: "Guarda o que usas").
 - Cada ponto diz o que acontece e, quando faz sentido, o porquê na mesma frase.
 - Cobre o conceito central, os números e a consequência prática. Sem banalidades.
