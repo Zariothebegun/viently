@@ -1096,16 +1096,17 @@ function loop() {
     needFit = false;
     dirty = true;
   }
-  dist = fitDist * zoom;
-  camera.position.set(
-    target.x + dist * Math.sin(pol) * Math.sin(az),
-    target.y + dist * Math.cos(pol),
-    target.z + dist * Math.sin(pol) * Math.cos(az)
-  );
-  camera.lookAt(target);
-  renderer.render(scene, camera);
-
+  // Quando a rotação está parada, só redesenha depois de uma alteração.
+  // Evita renderizar a mesma imagem 60 vezes por segundo no painel 3D.
   if (dirty) {
+    dist = fitDist * zoom;
+    camera.position.set(
+      target.x + dist * Math.sin(pol) * Math.sin(az),
+      target.y + dist * Math.cos(pol),
+      target.z + dist * Math.sin(pol) * Math.cos(az)
+    );
+    camera.lookAt(target);
+    renderer.render(scene, camera);
     placeLabels();
     dirty = false;
   }
@@ -1123,6 +1124,7 @@ window.__setExplode = function (t) {
 window.__setXray = function (on) {
   xray = !!on;
   applyExplode(explodeT);
+  dirty = true;
 };
 window.__setSpin = function (on) {
   spin = !!on;
