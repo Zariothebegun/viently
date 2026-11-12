@@ -85,7 +85,7 @@ ESTRUTURA DO JSON
   "title": "título claro, 2 a 5 palavras",
   "subtitle": "uma frase curta que apresenta a ideia central e desperta curiosidade",
   "say": "2 a 3 frases de explicação natural, como um professor a acompanhar o desenho",
-  "note": "3 ou 4 pontos numerados, separados por quebra de linha",
+  "note": "2 ou 3 pontos numerados, curtos e separados por quebra de linha",
   "numbers": [{"label": "grandeza", "value": "valor e unidade"}],
   "example": "um exemplo concreto, com raciocínio ou cálculo quando fizer sentido",
   "mistake": {"wrong": "interpretação errada plausível", "right": "correcção e motivo"},
