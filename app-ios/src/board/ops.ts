@@ -137,6 +137,13 @@ export type Op =
       start_ms?: number;
       duration_ms?: number;
     }
+  | {
+      // Composite scene: each element has an independent start and duration.
+      op: "scene";
+      elements: { at_ms: number; duration_ms: number; op: Op }[];
+      start_ms?: number;
+      duration_ms: number;
+    }
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
   | { op: "dot"; at: Pt; label?: string; label_at?: Pt; color?: Ink }
