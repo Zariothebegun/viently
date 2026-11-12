@@ -137,9 +137,9 @@ function writeOf(step: Step): string {
     .join("\n")
     .split("\n")
     .slice(0, 4)
-    .map((line) => line.slice(0, 190))
+    .map((line) => line.slice(0, 90))
     .join("\n")
-    .slice(0, 760);
+    .slice(0, 360);
   if (w) return w;
   const s = (step.say ?? "")
     .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
@@ -165,7 +165,7 @@ function geometry(w: number, h: number, hasQuiz: boolean): Geom {
   const ratio = hasQuiz ? 0.78 : 0.86;
   // O quadro ocupa uma faixa previsível do ecrã; o resto fica para ensinar,
   // sem scroll interno nem conteúdo escondido por baixo do composer.
-  const bh = Math.round(Math.min(bw * ratio, h * 0.31));
+  const bh = Math.round(Math.min(bw * ratio, h * 0.28));
   const boardX = Math.round((w - bw) / 2);
   const boardY = 6 + HEAD_H;
   return { w, h, bw, bh, boardX, boardY };
@@ -263,7 +263,7 @@ function PageCards({ page }: { page: StepPage }) {
       {!!page.recap && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
-          {page.recap.lines.map((l, i) => (
+          {page.recap.lines.slice(0, 2).map((l, i) => (
             <Text key={i} style={s.recapLine}>
               • {l}
             </Text>
@@ -369,7 +369,7 @@ const StaticStep = memo(
             {page.title}
           </Text>
           {!!page.subtitle && (
-            <Text style={s.sub} numberOfLines={4}>
+            <Text style={s.sub} numberOfLines={2}>
               {page.subtitle}
             </Text>
           )}
@@ -1556,7 +1556,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 3,
     minHeight: 54,
-    maxHeight: 174,
+    maxHeight: 250,
     flexShrink: 1,
     overflow: "hidden",
   },
