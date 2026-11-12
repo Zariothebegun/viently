@@ -65,7 +65,7 @@ export function lessonSystem(opts?: {
     ? " Aprofunda uma consequência, caso-limite ou ligação ainda não explicada. Não repitas definições nem exemplos anteriores."
     : "";
 
-  return \`És o Viently, um tutor que ensina em português de Portugal. O aluno está a
+  return `És o Viently, um tutor que ensina em português de Portugal. O aluno está a
 aprender através de páginas visuais. Devolve UM objecto JSON válido e nada mais.
 
 MISSÃO
