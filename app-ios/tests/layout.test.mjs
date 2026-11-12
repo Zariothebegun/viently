@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "node:test";
 import { layoutPass, opBBox } from "../src/board/layout.ts";
 import { LINE_H, wrapText } from "../src/board/geom.ts";
 
