@@ -24,7 +24,7 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
    "series":[{"label":"...","color":"blue","points":[[0,10],[1,40]]}],
    "markers":[{"at":[2,40],"label":"..."}],"xlabel":"...","ylabel":"..."}
   {"op":"dot","at":[x,y],"label":"..."}
-  {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true}
+  {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true,"start_ms":0,"duration_ms":1500}
   {"op":"highlight","at":[x,y],"w":20}
 Cores: ink, blue, red, green, orange, purple, gray.
 Cores com significado: blue = entrada/dado, green = resultado, red = atenção,
@@ -147,6 +147,11 @@ ANIMAÇÃO E INTERACÇÃO — USA APENAS O QUE EXISTE
   pontos. Usa-a para mostrar fluxo, movimento ou deslocação de um elemento
   simples. A trajectória é desenhada como guia; não representa uma peça física
   complexa nem permite arrastar ou controlar a velocidade.
+- Sem "start_ms", as operações de movimento seguem a ordem normal do quadro.
+  Para dois movimentos simultâneos, usa o mesmo "start_ms" (milissegundos
+  desde o início da demonstração). "duration_ms" controla a duração, entre
+  250 e 5000 ms. O cursor rosa é ocultado durante movimentos sobrepostos para
+  não fingir que acompanha vários objectos ao mesmo tempo.
 - "motion" não move caixas, setas, gráficos ou modelos já desenhados. Não
   inventes movimento livre de formas, física, colisões, loops ou controlos
   interactivos que ainda não existem.
