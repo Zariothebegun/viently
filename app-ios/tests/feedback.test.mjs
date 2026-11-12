@@ -23,7 +23,7 @@ test("correct quiz answers are recorded with the selected option and explanation
 test("wrong quiz answers are explicitly recorded for targeted remediation", () => {
   const next = recordCheckAnswer([], check, 1);
   assert.ok(next);
-  assert.match(next[1].content, /A resistência aumentou/);
+  assert.match(next[0].content, /A resistência aumentou/);
   assert.match(next[2].content, /resposta estava incorrecta/);
 });
 
