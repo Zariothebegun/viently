@@ -21,7 +21,7 @@ export function paginateLessonText(value: string, maxChars = DEFAULT_PAGE_CHARS)
     if (sentence.length > limit) {
       flush();
       let fragment = "";
-      for (const word of sentence.split(/\\s+/)) {
+      for (const word of sentence.split(/\s+/)) {
         if (word.length > limit) {
           if (fragment) {
             pages.push(fragment);
