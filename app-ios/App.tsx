@@ -9,7 +9,6 @@ import {
   Quicksand_700Bold,
 } from "@expo-google-fonts/quicksand";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Speech from "expo-speech";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -421,7 +420,6 @@ export default function App() {
   const [keyDraft, setKeyDraft] = useState("");
   const [askedOnce, setAskedOnce] = useState(false);
   const [modelOpen, setModelOpen] = useState<ModelOpen | null>(null);
-  const [voice, setVoice] = useState(true);
 
   const pagesRef = useRef<Page[]>(pages);
   const activeRef = useRef(0);
@@ -436,8 +434,6 @@ export default function App() {
   // passa à seguinte quando o texto chega ao fim
   const loadingRef = useRef<Set<string>>(new Set());
   const cursorTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const voiceRef = useRef(voice);
-  voiceRef.current = voice;
 
   const dragY = useRef(new Animated.Value(0)).current;
   const blue = useRef(new Animated.ValueXY({ x: 100, y: 30 })).current;
@@ -470,7 +466,6 @@ export default function App() {
     loadKey().then(setKey);
     return () => {
       cancelRef.current = true;
-      Speech.stop();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       cursorTimers.current.forEach(clearTimeout);
     };
@@ -478,12 +473,6 @@ export default function App() {
 
   // -------------------------------------------------------------------------
   // voz
-
-  function speakStep(text: string) {
-    if (!voiceRef.current || Platform.OS === "web" || !text) return;
-    Speech.stop();
-    Speech.speak(text, { language: "pt-PT", rate: 0.96, pitch: 1.0 });
-  }
 
   // -------------------------------------------------------------------------
   // animação do desenho
@@ -611,7 +600,6 @@ export default function App() {
     rafRef.current = null;
     setLive(null);
     clearCursorTimers();
-    Speech.stop();
     const id = playingIdRef.current;
     if (id) {
       const p = pagesRef.current.find((x) => x.id === id);
@@ -640,7 +628,6 @@ export default function App() {
     blueOp.setValue(1);
     pinkOp.setValue(1);
 
-    speakStep(p.say);
     later(() => moveBlue(lineAnchor(g, p.line.length)), titleMs(p.title) + 160);
 
     const fresh = p.items.filter((it) => p.newIds.includes(it.id));
@@ -1339,13 +1326,6 @@ export default function App() {
                 : `· ${active + 1}`}
             </Text>
           </Text>
-          <Pressable
-            onPress={() => setVoice((v) => !v)}
-            hitSlop={10}
-            style={s.headerBtn}
-          >
-            <Text style={s.headerBtnText}>{voice ? "som" : "mudo"}</Text>
-          </Pressable>
           <Pressable
             onPress={() => {
               setAskedOnce(false);
