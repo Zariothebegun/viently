@@ -4,8 +4,8 @@ import type { Lesson } from "../board/ops";
 // conteúdo real antes de existir chave de API. Não é gerada por modelo.
 // É UMA página inteira, como as que o modelo passa a devolver.
 export const seedLesson: Lesson = {
-  title: "Mitose",
-  subtitle: "Uma célula divide-se em duas iguais",
+  title: "Mitose humana",
+  subtitle: "Uma célula do corpo origina duas células com o mesmo ADN.",
   suggestions: ["Ver as fases", "Mitose ou meiose?"],
   check: {
     prompt: "O que acontece ao ADN antes de a célula se dividir?",
@@ -16,7 +16,7 @@ export const seedLesson: Lesson = {
   },
   steps: [
     {
-      say: "A mitose é o processo pelo qual uma célula se divide em duas células iguais. Antes de começar, o ADN duplica-se, para que cada célula-filha receba uma cópia completa. Toca na célula para a rodares e veres as partes por dentro.",
+      say: "Numa célula do corpo humano, o ADN duplica-se antes da divisão. Durante a mitose, as cópias são separadas e distribuídas. No fim, formam-se duas células com 46 cromossomas cada.",
       write:
         "1. A mitose divide uma célula em duas iguais.\n2. O ADN duplica-se antes de a célula se dividir.\n3. Cada célula-filha recebe 46 cromossomas.",
       board: [
@@ -25,14 +25,14 @@ export const seedLesson: Lesson = {
           op: "notes",
           at: [67, 5],
           title: "Fases",
-          lines: ["prófase", "metáfase", "anáfase", "telófase"],
+          lines: ["ADN condensa", "cromossomas alinham", "cópias separam", "célula divide"],
         },
         { op: "text", text: "1 célula-mãe", at: [4, 54], size: "m", color: "ink" },
         { op: "arrow", from: [30, 56], to: [47, 56], label: "divide-se" },
         { op: "text", text: "2 células-filhas", at: [50, 54], size: "m", color: "green" },
         {
           op: "text",
-          text: "46 cromossomas em cada uma",
+          text: "46 em cada (célula humana)",
           at: [4, 66],
           size: "m",
           color: "gray",
