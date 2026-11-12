@@ -33,6 +33,7 @@ import { applyOps, opBBox } from "./src/board/layout";
 import type { Check, Item, Lesson, Op, Step } from "./src/board/ops";
 import { generateLesson, DEFAULT_MODEL } from "./src/lesson/generate";
 import { recordCheckAnswer } from "./src/lesson/feedback";
+import { paginateLessonText } from "./src/lesson/pagination";
 import { defaultKey, loadKey, looksLikeKey, saveKey } from "./src/lesson/key";
 import { seedLesson } from "./src/lesson/seed";
 import { Model3D } from "./src/three/Model3D";
@@ -791,15 +792,25 @@ export default function App() {
   ): StepPage[] {
     const title = (lesson.title?.trim() || opts.root || "Aula").slice(0, 48);
     const steps = lesson.steps;
-    const totalCount = steps.length + (lesson.check ? 1 : 0);
+    const prepared = steps.flatMap((step, sourceIndex) => {
+      const content = (step.write || step.say || "").replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\\s*/i, "").trim();
+      return paginateLessonText(content).map((chunk, chunkIndex) => ({
+        step, sourceIndex, chunk, chunkIndex,
+      }));
+    });
+    const totalCount = prepared.length + (lesson.check ? 1 : 0);
     const out: StepPage[] = [];
 
-    steps.forEach((step, i) => {
-      // A página é autónoma. Não herda desenhos nem modelos 3D de páginas
-      // anteriores; cada gesto vertical revela uma nova composição completa.
+    prepared.forEach(({ step, sourceIndex, chunk, chunkIndex }, pageIndex) => {
+      // Cada bloco de texto tem espaço próprio. Se o modelo enviar uma
+      // explicação longa num único passo, ela é dividida sem cortar conteúdo.
+      const firstChunk = chunkIndex === 0;
       const before: Item[] = [];
-      const next = applyOps(before, step.board as Op[], nextSeed);
+      const next = firstChunk
+        ? applyOps(before, step.board as Op[], nextSeed)
+        : before;
       const beforeIds = new Set(before.map((it) => it.id));
+      const lastPage = pageIndex === prepared.length - 1;
 
       out.push({
         id: newPageId(),
@@ -809,18 +820,22 @@ export default function App() {
         history: opts.history,
         items: next,
         newIds: next.filter((it) => !beforeIds.has(it.id)).map((it) => it.id),
-        suggestions: !lesson.check && i === steps.length - 1 ? lesson.suggestions ?? [] : [],
+        suggestions: !lesson.check && lastPage ? lesson.suggestions ?? [] : [],
         state: "idle",
-        title: step.title?.trim() || (i === 0 ? title : `${title} · ${i + 1}`),
-        subtitle: step.subtitle?.trim() || (i === 0 ? lesson.subtitle : `continuação · passo ${i + 1} de ${steps.length}`),
-        stepIndex: i,
+        title: firstChunk
+          ? step.title?.trim() || (sourceIndex === 0 ? title : `${title} · ${sourceIndex + 1}`)
+          : `${step.title?.trim() || title} · continuação`,
+        subtitle: !firstChunk
+          ? "continuação da explicação"
+          : step.subtitle?.trim() || (sourceIndex === 0 ? lesson.subtitle : `continuação · passo ${sourceIndex + 1} de ${steps.length}`),
+        stepIndex: pageIndex,
         stepCount: totalCount,
-        say: step.say,
-        line: writeOf(step),
-        recap: step.recap,
-        numbers: step.numbers,
-        example: step.example,
-        mistake: step.mistake,
+        say: chunk,
+        line: chunk,
+        recap: firstChunk ? step.recap : undefined,
+        numbers: firstChunk ? step.numbers : undefined,
+        example: firstChunk ? step.example : undefined,
+        mistake: firstChunk ? step.mistake : undefined,
         check: undefined,
       });
     });
