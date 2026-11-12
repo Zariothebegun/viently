@@ -75,7 +75,7 @@ async function writeCache(key: string, lesson: Lesson) {
 const KNOWN = new Set([
   "title", "text", "note", "line", "arrow", "callout", "box", "ellipse",
   "curve", "polygon", "notes", "graph", "axes", "underline", "highlight",
-  "dot", "motion", "model3d", "erase", "clear",
+  "dot", "motion", "scene", "model3d", "erase", "clear",
 ]);
 
 function num(v: any, d: number): number {
@@ -184,6 +184,34 @@ export function sanitizeOps(raw: any): Op[] {
             trail: o.trail !== false,
             start_ms: o.start_ms != null ? Math.max(0, Math.min(6000, Math.round(num(o.start_ms, 0)))) : undefined,
             duration_ms: o.duration_ms != null ? Math.max(250, Math.min(5000, Math.round(num(o.duration_ms, 1500)))) : undefined,
+          });
+        }
+        break;
+      }
+      case "scene": {
+        const rawElements = Array.isArray(o.elements) ? o.elements.slice(0, 16) : [];
+        const elements: { at_ms: number; duration_ms: number; op: Op }[] = [];
+        for (const element of rawElements) {
+          if (!element || typeof element !== "object" || !element.op || typeof element.op !== "object") continue;
+          const childKind = String(element.op.op ?? "");
+          // 3D models are rendered by the page overlay, not inside the SVG scene.
+          // Nested and destructive operations are rejected to keep the renderer predictable.
+          if (["scene", "model3d", "clear", "erase"].includes(childKind)) continue;
+          const child = sanitizeOps([element.op])[0];
+          if (!child) continue;
+          elements.push({
+            at_ms: Math.max(0, Math.min(8000, Math.round(num(element.at_ms, 0)))),
+            duration_ms: Math.max(100, Math.min(5000, Math.round(num(element.duration_ms, 900)))),
+            op: child,
+          });
+        }
+        if (elements.length) {
+          const end = Math.max(...elements.map((element) => element.at_ms + element.duration_ms));
+          out.push({
+            op: "scene",
+            elements,
+            start_ms: o.start_ms != null ? Math.max(0, Math.min(6000, Math.round(num(o.start_ms, 0)))) : undefined,
+            duration_ms: Math.max(end, Math.min(10000, Math.max(250, Math.round(num(o.duration_ms, end))))),
           });
         }
         break;
