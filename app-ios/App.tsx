@@ -259,7 +259,7 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
           {page.mistake.right.slice(0, 55)}
         </Text>
       )}
-      {!!page.recap && (
+      {!!page.recap && (compact || !page.mistake) && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
           {page.recap.lines.slice(0, 1).map((l, i) => (
