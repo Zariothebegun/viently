@@ -24,6 +24,7 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
    "series":[{"label":"...","color":"blue","points":[[0,10],[1,40]]}],
    "markers":[{"at":[2,40],"label":"..."}],"xlabel":"...","ylabel":"..."}
   {"op":"dot","at":[x,y],"label":"..."}
+  {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true}
   {"op":"highlight","at":[x,y],"w":20}
 Cores: ink, blue, red, green, orange, purple, gray.
 Cores com significado: blue = entrada/dado, green = resultado, red = atenção,
@@ -141,9 +142,14 @@ ANIMAÇÃO E INTERACÇÃO — USA APENAS O QUE EXISTE
 - A ordem das operações em "board" é a ordem em que o lápis as revela. Organiza
   essa ordem como uma demonstração: primeiro o elemento necessário, depois a
   transformação, por fim o resultado. Não baralhes a ordem causal.
-- O quadro actual anima o desenho e a escrita; não consegue ainda mover
-  livremente formas 2D depois de as desenhar. Não descrevas uma deslocação
-  animada de uma seta, peça ou gráfico como se já fosse suportada.
+- O quadro anima o desenho e a escrita. Também suporta "motion": uma
+  partícula percorre, uma única vez, uma trajectória 2D definida por 2 a 8
+  pontos. Usa-a para mostrar fluxo, movimento ou deslocação de um elemento
+  simples. A trajectória é desenhada como guia; não representa uma peça física
+  complexa nem permite arrastar ou controlar a velocidade.
+- "motion" não move caixas, setas, gráficos ou modelos já desenhados. Não
+  inventes movimento livre de formas, física, colisões, loops ou controlos
+  interactivos que ainda não existem.
 - Um model3d aparece dentro da página e roda automaticamente. Ao tocar, abre
   o painel 3D. Os presets locais cell, motor, atom, ram e bit permitem rodar,
   seleccionar partes, vista explodida e raios X. Os modelos externos permitem
