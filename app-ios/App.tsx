@@ -446,6 +446,7 @@ export default function App() {
   const [askedOnce, setAskedOnce] = useState(false);
   const [modelOpen, setModelOpen] = useState<ModelOpen | null>(null);
   const [activeHotspot, setActiveHotspot] = useState<string | null>(null);
+  const masteryWriteRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const pagesRef = useRef<Page[]>(pages);
   const activeRef = useRef(0);
@@ -909,7 +910,7 @@ export default function App() {
         question: p.question,
         key,
         pace: 3,
-        profile: await getMasteryProfile(p.root),
+        profile: (await masteryWriteRef.current, await getMasteryProfile(p.root)),
         boardNow: "",
         hasBoard: false,
         history: p.history,
@@ -1062,7 +1063,7 @@ export default function App() {
     patchPage(page.id, { answered: index, history });
     // Regista evidência persistente por tema; a próxima explicação pode
     // ajustar a profundidade sem assumir domínio com base numa única resposta.
-    void recordMasteryAttempt(page.root, index === page.check.answer_index);
+    masteryWriteRef.current = recordMasteryAttempt(page.root, index === page.check.answer_index);
   }
 
   function ask(text: string, continueCurrent = false) {
