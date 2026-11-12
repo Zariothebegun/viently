@@ -148,6 +148,9 @@ export type Check = {
 };
 
 export type Step = {
+  // Cada passo é uma página autónoma do feed vertical.
+  title?: string;
+  subtitle?: string;
   say: string;
   // versão escrita do passo, para a página (texto de ensino completo)
   write?: string;
