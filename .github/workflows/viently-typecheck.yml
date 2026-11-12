@@ -29,6 +29,8 @@ jobs:
           cache-dependency-path: app-ios/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=moderate
       - name: Align Expo packages with the SDK
         run: npx expo install --fix
       - name: Check Expo dependency compatibility
