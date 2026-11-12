@@ -429,7 +429,7 @@ function removeTrailingCommas(value: string): string {
   return out;
 }
 
-function parseLesson(raw: string): Lesson {
+export function parseLesson(raw: string): Lesson {
   let text = raw.trim();
   // modelos às vezes embrulham em ```json
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
