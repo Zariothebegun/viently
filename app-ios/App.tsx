@@ -45,7 +45,7 @@ const MINT = "#5878bd";
 const HAIR = "rgba(47,62,88,0.12)";
 const HAND = "GochiHand_400Regular";
 const QUICK = "Quicksand_400Regular";
-const HEAD_H = 88;
+const HEAD_H = 104;
 const TITLE_MS_PER_CHAR = 12;
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -84,6 +84,7 @@ type StepPage = BasePage & {
   mistake?: { wrong: string; right: string };
   check?: Check;
   answered?: number;
+  quizOnly?: boolean;
 };
 
 type Page = HeroPage | StepPage | LoadPage;
@@ -135,10 +136,10 @@ function writeOf(step: Step): string {
     .filter(Boolean)
     .join("\n")
     .split("\n")
-    .slice(0, 4)
-    .map((line) => line.slice(0, 90))
+    .slice(0, 3)
+    .map((line) => line.length > 74 ? `${line.slice(0, 70).trimEnd()}…` : line)
     .join("\n")
-    .slice(0, 360);
+    .slice(0, 224);
   if (w) return w;
   const s = (step.say ?? "")
     .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
@@ -161,10 +162,10 @@ function geometry(w: number, h: number, hasQuiz: boolean): Geom {
   const bw = Math.min(w - 32, 440);
   // a página é uma só: o quadro pode ocupar mais altura do que quando havia
   // vários passos, sem empurrar a pergunta para fora do ecrã
-  const ratio = hasQuiz ? 0.78 : 0.86;
+  const ratio = hasQuiz ? 0.82 : 0.9;
   // O quadro ocupa uma faixa previsível do ecrã; o resto fica para ensinar,
   // sem scroll interno nem conteúdo escondido por baixo do composer.
-  const bh = Math.round(Math.min(bw * ratio, h * 0.28));
+  const bh = Math.round(Math.min(bw * ratio, h * 0.31));
   const boardX = Math.round((w - bw) / 2);
   const boardY = 6 + HEAD_H;
   return { w, h, bw, bh, boardX, boardY };
@@ -329,7 +330,7 @@ function HandHeading({
         {animate ? title.slice(0, n) : title}
       </Text>
       {!!subtitle && (
-        <Text style={[s.sub, !done && { opacity: 0 }]} numberOfLines={4}>
+        <Text style={[s.sub, !done && { opacity: 0 }]} numberOfLines={2}>
           {subtitle}
         </Text>
       )}
@@ -768,6 +769,7 @@ export default function App() {
   ): StepPage[] {
     const title = (lesson.title?.trim() || opts.root || "Aula").slice(0, 48);
     const steps = lesson.steps;
+    const totalCount = steps.length + (lesson.check ? 1 : 0);
     const out: StepPage[] = [];
 
     steps.forEach((step, i) => {
@@ -785,23 +787,45 @@ export default function App() {
         history: opts.history,
         items: next,
         newIds: next.filter((it) => !beforeIds.has(it.id)).map((it) => it.id),
-        suggestions: i === steps.length - 1 ? lesson.suggestions ?? [] : [],
+        suggestions: !lesson.check && i === steps.length - 1 ? lesson.suggestions ?? [] : [],
         state: "idle",
         title: step.title?.trim() || (i === 0 ? title : `${title} · ${i + 1}`),
         subtitle: step.subtitle?.trim() || (i === 0 ? lesson.subtitle : `continuação · passo ${i + 1} de ${steps.length}`),
         stepIndex: i,
-        stepCount: steps.length,
+        stepCount: totalCount,
         say: step.say,
-        line: i === steps.length - 1 && lesson.check
-          ? writeOf(step).split("\n").slice(0, 2).join("\n")
-          : writeOf(step),
+        line: writeOf(step),
         recap: step.recap,
         numbers: step.numbers,
         example: step.example,
         mistake: step.mistake,
-        check: i === steps.length - 1 ? lesson.check : undefined,
+        check: undefined,
       });
     });
+
+    // A avaliação tem uma página própria: a explicação nunca é comprimida
+    // para encaixar também a pergunta e as opções no mesmo ecrã.
+    if (lesson.check) {
+      out.push({
+        id: newPageId(),
+        kind: "step",
+        root: opts.root,
+        depth: opts.depth,
+        history: opts.history,
+        items: [],
+        newIds: [],
+        suggestions: lesson.suggestions ?? [],
+        state: "done",
+        title: "Vamos testar?",
+        subtitle: "Aplica a ideia que acabaste de aprender.",
+        stepIndex: steps.length,
+        stepCount: totalCount,
+        say: "",
+        line: "",
+        check: lesson.check,
+        quizOnly: true,
+      });
+    }
     return out;
   }
 
@@ -1253,10 +1277,11 @@ export default function App() {
     const showSuggestions =
       pg.state === "done" &&
       pg.stepIndex === pg.stepCount - 1 &&
+      (!pg.quizOnly || pg.answered !== undefined) &&
       pg.suggestions.length > 0;
     const showSwipeHint =
       pg.state === "done" &&
-      (pg.stepCount === 1 || pg.stepIndex < pg.stepCount - 1);
+      (pg.quizOnly ? pg.answered !== undefined : (pg.stepCount === 1 || pg.stepIndex < pg.stepCount - 1));
     const visibleLine = pg.state === "done" && lineN === 0 ? pg.line : pg.line.slice(0, lineN);
 
     return (
@@ -1273,7 +1298,7 @@ export default function App() {
           </Text>
         </View>
 
-        <View style={{ width: gg.bw, height: gg.bh, alignSelf: "center" }}>
+        {!pg.quizOnly && <View style={{ width: gg.bw, height: gg.bh, alignSelf: "center" }}>
           <Board
             ops={boardOps(pg)}
             fracOf={fracOf}
@@ -1297,9 +1322,9 @@ export default function App() {
               <LiveModel op={modelOp} visible={modelVisible} onOpen={setModelOpen} />
             </View>
           )}
-        </View>
+        </View>}
 
-        <View style={[s.lineBox, { maxHeight: pg.check ? 180 : 290 }]}>
+        {!pg.quizOnly && <View style={[s.lineBox, { maxHeight: 290 }]}>
           {!!activeHotspot && (() => {
             const hit = pg.items.find((item) => item.id === activeHotspot);
             if (!hit || hit.op.op !== "hotspot") return null;
@@ -1317,8 +1342,8 @@ export default function App() {
           ) : (
             <View style={s.linePlaceholder} />
           )}
-          {pg.state === "done" && <PageCards page={pg} compact={!!pg.check} />}
-        </View>
+          {pg.state === "done" && <PageCards page={pg} />}
+        </View>}
 
         {!!pg.check && (
           <View style={s.quiz}>
