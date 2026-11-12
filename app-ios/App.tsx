@@ -39,11 +39,11 @@ import { Model3D } from "./src/three/Model3D";
 import { LiveModel, type ModelOp, type ModelOpen } from "./src/three/LiveModel";
 import { MODELS } from "./src/three/scene";
 
-const INK = "#3b413d";
-const BODY = "#4b514d";
-const MUTED = "#8a9089";
-const MINT = "#4f7b5c";
-const HAIR = "rgba(63,71,64,0.10)";
+const INK = "#26334b";
+const BODY = "#46536a";
+const MUTED = "#858fa1";
+const MINT = "#5878bd";
+const HAIR = "rgba(47,62,88,0.12)";
 const HAND = "GochiHand_400Regular";
 const QUICK = "Quicksand_400Regular";
 const HEAD_H = 88;
@@ -281,7 +281,7 @@ function SuggestionPill({ text, onPress }: { text: string; onPress: () => void }
       style={({ pressed }) => [s.pill, pressed && { transform: [{ scale: 0.985 }] }]}
     >
       <LinearGradient
-        colors={["#eefaf1", "#e2f5e9", "#cfeedd"]}
+        colors={["#f5f7fd", "#e8eefb", "#d9e3f7"]}
         locations={[0, 0.5, 1]}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.6, y: 1 }}
@@ -342,7 +342,7 @@ const PagePaper = memo(function PagePaper() {
   return (
     <>
       <LinearGradient
-        colors={["#faf8f1", "#f6f3e9", "#efecdf"]}
+        colors={["#faf8f1", "#faf9f6", "#f0f1f5"]}
         locations={[0, 0.55, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -1098,11 +1098,20 @@ export default function App() {
   const modelBox = modelOp
     ? (() => {
         const b = opBBox(modelOp) ?? [10, 2, 88, 42];
+        // react-native-svg uses xMidYMid meet by default. The logical
+        // 100x75 board is letterboxed inside the wider phone rectangle;
+        // map the 3D overlay using that same scale/offset or it floats over
+        // neighbouring drawings.
+        const scale = Math.min(g.bw / 100, g.bh / 75);
+        const contentW = 100 * scale;
+        const contentH = 75 * scale;
+        const offsetX = (g.bw - contentW) / 2;
+        const offsetY = (g.bh - contentH) / 2;
         return {
-          left: Math.max(0, Math.min(g.bw, (b[0] / 100) * g.bw)),
-          top: Math.max(0, Math.min(g.bh, (b[1] / 75) * g.bh)),
-          width: Math.max(18, Math.min(g.bw, ((b[2] - b[0]) / 100) * g.bw)),
-          height: Math.max(18, Math.min(g.bh, ((b[3] - b[1]) / 75) * g.bh)),
+          left: offsetX + b[0] * scale,
+          top: offsetY + b[1] * scale,
+          width: Math.max(1, (b[2] - b[0]) * scale),
+          height: Math.max(1, (b[3] - b[1]) * scale),
         };
       })()
     : null;
@@ -1288,7 +1297,7 @@ export default function App() {
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" />
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f6f3e9" }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#faf9f6" }}>
         <View style={s.header}>
           <Text style={s.headerLabel} numberOfLines={1}>
             {headerTopic}{" "}
@@ -1484,7 +1493,7 @@ export default function App() {
 // ---------------------------------------------------------------------------
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f3e9" },
+  root: { flex: 1, backgroundColor: "#faf9f6" },
 
   header: {
     height: 38,
@@ -1566,36 +1575,36 @@ const s = StyleSheet.create({
     width: 21,
     height: 21,
     borderRadius: 11,
-    backgroundColor: "#dfe9e2",
+    backgroundColor: "#e5ebf8",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 9,
     marginTop: 1,
   },
-  noteNumTxt: { fontFamily: QUICK, fontSize: 12, color: "#3d6b4a" },
+  noteNumTxt: { fontFamily: QUICK, fontSize: 12, color: "#4d68a5" },
   noteBody: { flex: 1, fontFamily: QUICK, fontSize: 13.5, lineHeight: 17, color: BODY },
-  noteHead: { fontFamily: QUICK, color: "#2f3a33" },
+  noteHead: { fontFamily: QUICK, color: "#2d3a54" },
   cards: { marginTop: 8 },
   nums: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6 },
   numPill: {
-    backgroundColor: "#eef3ec",
+    backgroundColor: "#edf1fa",
     borderRadius: 10,
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
-  numLabel: { fontFamily: QUICK, fontSize: 10.5, color: "#79857b" },
-  numValue: { fontFamily: QUICK, fontSize: 13, color: "#2f3a33" },
+  numLabel: { fontFamily: QUICK, fontSize: 10.5, color: "#7c88a0" },
+  numValue: { fontFamily: QUICK, fontSize: 13, color: "#2d3a54" },
   cardLine: {
     fontFamily: QUICK,
     fontSize: 13,
     lineHeight: 18,
-    color: "#4a554e",
+    color: "#46536a",
     marginTop: 2,
   },
-  cardKey: { color: "#3d6b4a" },
+  cardKey: { color: "#4d68a5" },
   recapBox: {
     marginTop: 8,
-    backgroundColor: "#e7f1ea",
+    backgroundColor: "#edf1fa",
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -1603,14 +1612,14 @@ const s = StyleSheet.create({
   recapTitle: {
     fontFamily: HAND,
     fontSize: 17,
-    color: "#3d6b4a",
+    color: "#4d68a5",
     marginBottom: 4,
   },
   recapLine: {
     fontFamily: QUICK,
     fontSize: 12.5,
     lineHeight: 16,
-    color: "#4a554e",
+    color: "#46536a",
     marginTop: 2,
   },
   linePlaceholder: { paddingTop: 7 },
@@ -1656,7 +1665,7 @@ const s = StyleSheet.create({
     borderColor: "rgba(63,71,64,0.16)",
     backgroundColor: "#fbfaf4",
   },
-  quizRight: { backgroundColor: "#e9f4ea", borderColor: "#7ba886" },
+  quizRight: { backgroundColor: "#e9effc", borderColor: "#8198ce" },
   quizWrong: { backgroundColor: "#f9ece8", borderColor: "#d3a096" },
   quizKey: {
     width: 22,
@@ -1666,11 +1675,11 @@ const s = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#eceadf",
   },
-  quizKeyRight: { backgroundColor: "#5c8a68" },
+  quizKeyRight: { backgroundColor: "#5878bd" },
   quizKeyWrong: { backgroundColor: "#b4514a" },
-  quizKeyTxt: { color: "#5b5f68", fontSize: 11.5, fontFamily: "Quicksand_700Bold" },
+  quizKeyTxt: { color: "#59657a", fontSize: 11.5, fontFamily: "Quicksand_700Bold" },
   quizOptTxt: { color: INK, fontSize: 12, lineHeight: 15 },
-  quizMark: { color: "#4f7b5c", fontSize: 14, fontFamily: "Quicksand_700Bold" },
+  quizMark: { color: "#5878bd", fontSize: 14, fontFamily: "Quicksand_700Bold" },
   quizWhy: {
     marginTop: 8,
     color: "#5f6a60",
@@ -1691,9 +1700,9 @@ const s = StyleSheet.create({
     minHeight: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#b9dcc5",
+    borderColor: "#c7d4ef",
     borderBottomWidth: 1.5,
-    borderBottomColor: "#a9cdb6",
+    borderBottomColor: "#b5c5e8",
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
@@ -1701,7 +1710,7 @@ const s = StyleSheet.create({
     paddingRight: 10,
     paddingVertical: 6,
     gap: 6,
-    shadowColor: "#5f7f69",
+    shadowColor: "#667cae",
     shadowOpacity: 0.16,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 5 },
@@ -1722,7 +1731,7 @@ const s = StyleSheet.create({
     fontFamily: HAND,
     fontSize: 14.5,
     lineHeight: 16.5,
-    color: "#3f6a4c",
+    color: "#4966a7",
   },
 
   hero: {
@@ -1767,7 +1776,7 @@ const s = StyleSheet.create({
   },
   heroChip: {
     borderWidth: 1,
-    borderColor: "#e2ddcf",
+    borderColor: "#e0e4ee",
     backgroundColor: "#fffdf6",
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1906,7 +1915,7 @@ const s = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: "#fffdf6",
     borderWidth: 1,
-    borderColor: "#e3ded0",
+    borderColor: "#e0e4ee",
     borderRadius: 28,
     shadowColor: "#6d6a5a",
     shadowOpacity: 0.14,
@@ -1926,7 +1935,7 @@ const s = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: "#3f4a43",
+    backgroundColor: "#35435f",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1955,7 +1964,7 @@ const s = StyleSheet.create({
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: "#e3ded0",
+    borderColor: "#e0e4ee",
     backgroundColor: "#fffdf6",
     borderRadius: 13,
     paddingHorizontal: 13,
