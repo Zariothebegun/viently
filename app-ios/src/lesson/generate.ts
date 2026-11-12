@@ -402,7 +402,20 @@ function parseLesson(raw: string): Lesson {
   const last = text.lastIndexOf("}");
   if (first >= 0 && last > first) text = text.slice(first, last + 1);
 
-  const data = JSON.parse(text);
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch (firstError) {
+    // Corrige só vírgulas finais; não inventa campos nem altera o conteúdo.
+    const repaired = text.replace(/,\s*([}\]])/g, "$1");
+    try {
+      data = JSON.parse(repaired);
+    } catch {
+      throw new Error(firstError instanceof Error
+        ? "JSON inválido devolvido pelo modelo: " + firstError.message.slice(0, 120)
+        : "JSON inválido devolvido pelo modelo.");
+    }
+  }
   const steps: Step[] = [];
 
   // Formato actual: a página inteira num só objecto.
@@ -641,26 +654,29 @@ async function callModel(
       body: JSON.stringify(body),
     });
   } catch (e: any) {
+    clearTimeout(timer);
     if (e?.name === "AbortError") {
       throw new Error("O modelo demorou demasiado a responder. Tenta outra vez.");
     }
     throw e;
+  }
+
+  try {
+    if (!res.ok) {
+      const responseBody = await res.text().catch(() => "");
+      throw new HttpError(res.status, (isCloud ? "OpenRouter" : "API local") + " " + res.status + ": " + responseBody.slice(0, 220));
+    }
+
+    const json = await res.json();
+    const content = json?.choices?.[0]?.message?.content
+      || json?.choices?.[0]?.message?.reasoning_content;
+    if (typeof content !== "string" || !content.trim()) {
+      throw new Error("Resposta vazia do modelo.");
+    }
+    return parseLesson(content);
   } finally {
     clearTimeout(timer);
   }
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new HttpError(res.status, `${isCloud ? "OpenRouter" : "API local"} ${res.status}: ${body.slice(0, 220)}`);
-  }
-
-  const json = await res.json();
-  const content = json?.choices?.[0]?.message?.content
-    || json?.choices?.[0]?.message?.reasoning_content;
-  if (typeof content !== "string" || !content.trim()) {
-    throw new Error("Resposta vazia do modelo.");
-  }
-  return parseLesson(content);
 }
 
 // só estes erros podem vir do formato da resposta; os outros não melhoram a
@@ -684,9 +700,8 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   const deadline = Date.now() + 300000;
   let lastError: unknown = null;
 
-  // Tentativas por destino: o OpenRouter (modelos gratuitos) é o principal —
-  // caminho provado; o Gemini oficial entra se este falhar, e a API local
-  // (proxy no PC) fica em último, só útil em casa.
+  // OpenRouter é o caminho principal; um endpoint compatível opcional
+  // pode funcionar como último fallback.
   type Attempt = { model: string; endpoint: string; key: string | null };
   const attempts: Attempt[] = [];
   const cloudKey = input.key;
