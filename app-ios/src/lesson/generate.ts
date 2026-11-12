@@ -75,7 +75,7 @@ async function writeCache(key: string, lesson: Lesson) {
 const KNOWN = new Set([
   "title", "text", "note", "line", "arrow", "callout", "box", "ellipse",
   "curve", "polygon", "notes", "graph", "axes", "underline", "highlight",
-  "dot", "motion", "scene", "model3d", "erase", "clear",
+  "dot", "hotspot", "motion", "scene", "model3d", "erase", "clear",
 ]);
 
 function num(v: any, d: number): number {
@@ -356,6 +356,21 @@ export function sanitizeOps(raw: any): Op[] {
           color: o.color,
         });
         break;
+      case "hotspot": {
+        const label = String(o.label ?? "").replace(/\s+/g, " ").trim().slice(0, 28);
+        const detail = String(o.detail ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+        if (label && detail) {
+          const at = pt(o.at, [50, 38]);
+          out.push({
+            op: "hotspot",
+            at: [Math.max(2, Math.min(98, at[0])), Math.max(2, Math.min(73, at[1]))],
+            label,
+            detail,
+            color: ["ink", "blue", "red", "green", "orange", "purple", "gray", "yellow"].includes(o.color) ? o.color : "orange",
+          });
+        }
+        break;
+      }
     }
   }
   return out;
