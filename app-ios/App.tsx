@@ -667,6 +667,7 @@ export default function App() {
         starts[j] + durs[j] > starts[i],
       ),
     );
+    // A single cursor cannot faithfully track overlapping moving objects.
     if (hasOverlappingMotion) pinkOp.setValue(0);
 
     setLive({ pageId: p.id, items: fresh, starts, durs });
