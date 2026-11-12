@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Check, Lesson, Op, Size, Step } from "../board/ops";
+import type { Check, Ink, Lesson, Op, Size, Step } from "../board/ops";
 import { isModelId } from "../three/models";
 import { lessonSystem } from "./prompt";
 
@@ -88,6 +88,14 @@ function safeSize(value: any, fallback: Size = "m"): Size {
     : fallback;
 }
 
+function safeColor(value: any, fallback: Ink = "ink"): Ink {
+  return value === "ink" || value === "blue" || value === "red" ||
+    value === "green" || value === "orange" || value === "purple" ||
+    value === "gray" || value === "yellow"
+    ? value
+    : fallback;
+}
+
 function pt(v: any, d: [number, number]): [number, number] {
   if (!Array.isArray(v) || v.length < 2) return d;
   return [num(v[0], d[0]), num(v[1], d[1])];
@@ -125,7 +133,7 @@ export function sanitizeOps(raw: any): Op[] {
           text: String(o.text).slice(0, 160),
           at: pt(o.at, [10, 20]),
           size: safeSize(o.size),
-          color: o.color,
+          color: safeColor(o.color),
           align: o.align === "center" ? "center" : "left",
           fit_w: o.fit_w != null ? Math.max(8, Math.min(88, num(o.fit_w, 40))) : undefined,
         });
@@ -134,14 +142,14 @@ export function sanitizeOps(raw: any): Op[] {
         if (o.text) out.push({ op: "note", text: String(o.text).slice(0, 160), at: pt(o.at, [10, 20]), color: o.color });
         break;
       case "line":
-        out.push({ op: "line", from: pt(o.from, [0, 0]), to: pt(o.to, [10, 10]), color: o.color, dash: !!o.dash });
+        out.push({ op: "line", from: pt(o.from, [0, 0]), to: pt(o.to, [10, 10]), color: safeColor(o.color), dash: !!o.dash });
         break;
       case "arrow":
         out.push({
           op: "arrow",
           from: pt(o.from, [0, 0]),
           to: pt(o.to, [10, 10]),
-          color: o.color,
+          color: safeColor(o.color),
           label: o.label ? String(o.label).slice(0, 32) : undefined,
           label_at: o.label_at ? pt(o.label_at, [0, 0]) : undefined,
         });
@@ -154,7 +162,7 @@ export function sanitizeOps(raw: any): Op[] {
           r: o.r ? num(o.r, 3) : undefined,
           label: o.label ? String(o.label).slice(0, 48) : undefined,
           label_at: o.label_at ? pt(o.label_at, [0, 0]) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "box":
@@ -166,7 +174,7 @@ export function sanitizeOps(raw: any): Op[] {
           h: num(o.h, 10),
           label: o.label ? String(o.label).slice(0, 40) : undefined,
           size: safeSize(o.size),
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "motion": {
@@ -234,7 +242,7 @@ export function sanitizeOps(raw: any): Op[] {
           label: o.label ? String(o.label).slice(0, 32) : undefined,
           side_labels: Array.isArray(o.side_labels) ? o.side_labels.slice(0, 8).map((v: any) => String(v).slice(0, 32)) : undefined,
           size: safeSize(o.size),
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       }
@@ -245,14 +253,14 @@ export function sanitizeOps(raw: any): Op[] {
           title: o.title ? String(o.title).slice(0, 40) : undefined,
           lines: Array.isArray(o.lines) ? o.lines.slice(0, 7).map((s: any) => String(s).slice(0, 46)) : [],
           compact: !!o.compact,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "graph": {
         const series = Array.isArray(o.series)
           ? o.series.slice(0, 4).map((s: any) => ({
               label: s?.label ? String(s.label).slice(0, 22) : undefined,
-              color: s?.color,
+              color: safeColor(s?.color, "blue"),
               points: pts(s?.points, 40)
                 .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))
                 .sort((a, b) => a[0] - b[0]),
@@ -296,7 +304,7 @@ export function sanitizeOps(raw: any): Op[] {
             ? o.markers.slice(0, 8).map((m: any) => ({
                 at: pt(m?.at, [0, 0]),
                 label: m?.label ? String(m.label).slice(0, 20) : undefined,
-                color: m?.color,
+                color: safeColor(m?.color, "orange"),
               }))
             : [],
           title: o.title ? String(o.title).slice(0, 30) : undefined,
@@ -313,7 +321,7 @@ export function sanitizeOps(raw: any): Op[] {
           h: num(o.h, 28),
           xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined,
           ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "model3d": {
@@ -323,7 +331,7 @@ export function sanitizeOps(raw: any): Op[] {
           w: num(o.w, 54),
           h: num(o.h, 38),
           title: o.title ? String(o.title).slice(0, 40) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         };
         if (isModelId(o.model)) {
           // preset local: roda, explode e mostra as partes
@@ -359,7 +367,7 @@ export function sanitizeOps(raw: any): Op[] {
           at: pt(o.at, [50, 38]),
           label: o.label ? String(o.label).slice(0, 24) : undefined,
           label_at: o.label_at ? pt(o.label_at, [0, 0]) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "hotspot": {
