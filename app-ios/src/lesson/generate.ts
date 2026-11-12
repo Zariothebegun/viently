@@ -421,7 +421,7 @@ function removeTrailingCommas(value: string): string {
     }
     if (ch === ",") {
       let next = i + 1;
-      while (next < value.length && /\\s/.test(value[next])) next++;
+      while (next < value.length && /\s/.test(value[next])) next++;
       if (value[next] === "}" || value[next] === "]") continue;
     }
     out += ch;
@@ -443,7 +443,7 @@ function parseLesson(raw: string): Lesson {
     data = JSON.parse(text);
   } catch (firstError) {
     // Corrige só vírgulas finais; não inventa campos nem altera o conteúdo.
-    const repaired = text.replace(/,\s*([}\]])/g, "$1");
+    const repaired = removeTrailingCommas(text);
     try {
       data = JSON.parse(repaired);
     } catch {
