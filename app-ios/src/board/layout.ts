@@ -251,6 +251,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     work.push(op);
   }
 
+  // Reserva primeiro o rectângulo 3D. Assim, texto e formas são deslocados
+  // para fora do modelo em vez de ficarem desenhados por cima dele.
+  work.sort((a, b) => Number(b.op === "model3d") - Number(a.op === "model3d"));
+
   // 1. formas procuram espaço
   for (const op of work) {
     const kind = op.op;
@@ -262,6 +266,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     if (!["box", "ellipse", "axes", "graph", "polygon", "notes", "model3d"].includes(kind)) continue;
 
     if (kind === "notes" && !op.compact && solidArea(placed) > 2600) op.compact = true;
+    const originalBBox = opBBox(op);
 
     const minW = String(op.label ?? "").length * 2.2 + 6;
     let best: { pos: Pt; bbox: Box; score: number } | null = null;
@@ -345,8 +350,8 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       continue;
     }
     const { pos, bbox } = best;
-    const dx = pos[0] - (kind === "polygon" ? x0 : kind === "notes" ? x0Of(op) : (op.at?.[0] ?? 0));
-    const dy = pos[1] - (kind === "polygon" ? y0 : kind === "notes" ? y0Of(op) : (op.at?.[1] ?? 0));
+    const dx = pos[0] - (kind === "polygon" || kind === "notes" ? (originalBBox?.[0] ?? 0) : (op.at?.[0] ?? 0));
+    const dy = pos[1] - (kind === "polygon" || kind === "notes" ? (originalBBox?.[1] ?? 0) : (op.at?.[1] ?? 0));
     if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
       displaced.push({ b: bbox, dx, dy });
     }
