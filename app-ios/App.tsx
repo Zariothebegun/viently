@@ -1589,7 +1589,7 @@ export default function App() {
             <Text style={s.modalText}>
               {askedOnce
                 ? "Sem chave só consigo mostrar a aula de exemplo. Cola a chave OpenRouter para eu gerar aulas a partir do que escreveres."
-                : "A chave fica guardada só neste iPhone. Não vai para o código nem para o servidor da escola."}
+                : "A chave fica guardada nesta app e é enviada ao OpenRouter quando pedes uma aula. Não é incluída no código da aplicação."}
             </Text>
             <TextInput
               value={keyDraft}
