@@ -178,7 +178,7 @@ export function sanitizeOps(raw: any): Op[] {
           out.push({
             op: "motion",
             points,
-            label: o.label ? String(o.label).replace(/\\s+/g, " ").trim().slice(0, 32) : undefined,
+            label: o.label ? String(o.label).replace(/\s+/g, " ").trim().slice(0, 32) : undefined,
             color: o.color,
             radius: Math.max(0.8, Math.min(3.5, num(o.radius, 1.8))),
             trail: o.trail !== false,
