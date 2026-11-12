@@ -607,6 +607,8 @@ export default function App() {
 
   function stopPlayback() {
     cancelRef.current = true;
+    blue.stopAnimation();
+    pink.stopAnimation();
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     setLive(null);
