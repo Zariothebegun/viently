@@ -25,6 +25,11 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
    "markers":[{"at":[2,40],"label":"..."}],"xlabel":"...","ylabel":"..."}
   {"op":"dot","at":[x,y],"label":"..."}
   {"op":"motion","points":[[x1,y1],[x2,y2],[x3,y3]],"label":"...","color":"blue","radius":1.8,"trail":true,"duration_ms":1500}
+  {"op":"scene","duration_ms":2400,"elements":[
+    {"at_ms":0,"duration_ms":900,"op":{"op":"box","at":[12,28],"w":20,"h":14,"label":"Entrada","color":"blue"}},
+    {"at_ms":250,"duration_ms":1600,"op":{"op":"motion","points":[[22,35],[48,35],[76,35]],"label":"Fluxo","color":"orange","duration_ms":1600}},
+    {"at_ms":1600,"duration_ms":700,"op":{"op":"text","at":[78,48],"text":"Resultado","color":"green","size":"s"}}
+  ]}
   {"op":"highlight","at":[x,y],"w":20}
 Cores: ink, blue, red, green, orange, purple, gray.
 Cores com significado: blue = entrada/dado, green = resultado, red = atenção,
@@ -152,9 +157,15 @@ ANIMAÇÃO E INTERACÇÃO — USA APENAS O QUE EXISTE
   desde o início da demonstração). "duration_ms" controla a duração, entre
   250 e 5000 ms. O cursor rosa é ocultado durante movimentos sobrepostos para
   não fingir que acompanha vários objectos ao mesmo tempo.
-- "motion" não move caixas, setas, gráficos ou modelos já desenhados. Não
-  inventes movimento livre de formas, física, colisões, loops ou controlos
-  interactivos que ainda não existem.
+- "scene" compõe até 16 operações 2D já suportadas numa demonstração.
+  Cada elemento tem "at_ms" e "duration_ms" próprios, pelo que texto, formas,
+  setas, gráficos e partículas podem aparecer em sequência ou em simultâneo.
+  A duração total cobre o último elemento. Não incluas "scene", "model3d",
+  "clear" ou "erase" dentro de "elements": os modelos 3D continuam a ser
+  operações separadas no quadro.
+- "motion" move uma partícula ao longo de pontos, não desloca caixas, setas,
+  gráficos ou modelos já desenhados. "scene" coordena operações existentes,
+  mas não cria física, colisões, loops nem controlos interactivos novos.
 - Um model3d aparece dentro da página e roda automaticamente. Ao tocar, abre
   o painel 3D. Os presets locais cell, motor, atom, ram e bit permitem rodar,
   seleccionar partes, vista explodida e raios X. Os modelos externos permitem
