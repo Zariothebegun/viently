@@ -2,12 +2,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const KEY = "viently.openrouter.key";
 
-// A chave nunca fica neste repositório. Vem de EXPO_PUBLIC_OPENROUTER_KEY
-// (ficheiro .env local, ignorado pelo git) ou é escrita pelo aluno dentro
-// da app e guardada no armazenamento privado do dispositivo.
+// Não ler chaves de EXPO_PUBLIC_*: essas variáveis são embutidas no
+// bundle e podem ser extraídas da aplicação. A chave BYOK é introduzida pelo
+// utilizador e guardada no armazenamento privado da app.
 export async function loadKey(): Promise<string | null> {
-  const env = process.env.EXPO_PUBLIC_OPENROUTER_KEY;
-  if (env && env.startsWith("sk-")) return env;
   return AsyncStorage.getItem(KEY);
 }
 
@@ -24,12 +22,7 @@ export function looksLikeKey(v: string): boolean {
   return t.startsWith("sk-or-") || t.startsWith("sk-");
 }
 
-// chave vinda do .env (proxy local ou OpenRouter) — evita pedir ao utilizador
+// Não existe chave de fornecedor embutida na aplicação.
 export function defaultKey(): string | null {
-  if (process.env.EXPO_PUBLIC_API_BASE && process.env.EXPO_PUBLIC_API_KEY) {
-    return process.env.EXPO_PUBLIC_API_KEY;
-  }
-  const env = process.env.EXPO_PUBLIC_OPENROUTER_KEY;
-  if (env && env.startsWith("sk-")) return env;
   return null;
 }
