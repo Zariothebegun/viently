@@ -81,7 +81,7 @@ export function lessonSystem(opts?: {
     "RITMO RÁPIDO: evita repetir pré-requisitos dominados; mantém as justificações essenciais.",
     "RITMO AVANÇADO: maior densidade conceptual, pressupostos explícitos e casos-limite; nunca omitas passos lógicos.",
   ][pace - 1];
-  const learner = String(opts?.profile ?? "").replace(/\\s+/g, " ").trim().slice(0, 240);
+  const learner = String(opts?.profile ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
   const extra = depth > 1
     ? " Usa o histórico para avançar a partir do que já foi explicado. Não confundas uma pergunta anterior com prova de que o aluno dominou o conceito."
     : "";
