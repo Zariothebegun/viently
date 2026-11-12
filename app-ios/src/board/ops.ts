@@ -134,6 +134,8 @@ export type Op =
       color?: Ink;
       radius?: number;
       trail?: boolean;
+      start_ms?: number;
+      duration_ms?: number;
     }
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
