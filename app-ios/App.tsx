@@ -420,6 +420,7 @@ export default function App() {
   const [keyDraft, setKeyDraft] = useState("");
   const [askedOnce, setAskedOnce] = useState(false);
   const [modelOpen, setModelOpen] = useState<ModelOpen | null>(null);
+  const [activeHotspot, setActiveHotspot] = useState<string | null>(null);
 
   const pagesRef = useRef<Page[]>(pages);
   const activeRef = useRef(0);
@@ -1077,6 +1078,7 @@ export default function App() {
   const activePageKind = page.kind;
 
   useEffect(() => {
+    setActiveHotspot(null);
     navRef.current = { active, total: pages.length, h: layout.h };
   }, [active, pages.length, layout.h]);
 
@@ -1278,6 +1280,8 @@ export default function App() {
             width={gg.bw}
             height={gg.bh}
             paper={false}
+            onHotspotPress={setActiveHotspot}
+            activeHotspot={activeHotspot}
           />
           {!!modelOp && !!modelBox && (
             <View
@@ -1296,6 +1300,16 @@ export default function App() {
         </View>
 
         <View style={[s.lineBox, { maxHeight: pg.check ? 180 : 290 }]}>
+          {!!activeHotspot && (() => {
+            const hit = pg.items.find((item) => item.id === activeHotspot);
+            if (!hit || hit.op.op !== "hotspot") return null;
+            return (
+              <View style={{ backgroundColor: "#edf1fa", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 }}>
+                <Text style={{ color: INK, fontFamily: "Quicksand_700Bold", fontSize: 13 }}>{hit.op.label}</Text>
+                <Text style={{ color: BODY, fontFamily: "Quicksand_500Medium", fontSize: 12.5, lineHeight: 18, marginTop: 2 }}>{hit.op.detail}</Text>
+              </View>
+            );
+          })()}
           {pg.state === "done" ? (
             <NoteText text={pg.line} />
           ) : visibleLine ? (
