@@ -11,11 +11,7 @@ type Placed = { b: Box; w: number };
 
 export function opBBox(op: any): Box | null {
   const k = op.op;
-  if (k === "title") {
-    const lines = wrapText(String(op.text ?? ""), "xl", 86);
-    const h = lines.length * LINE_H.xl;
-    return [7, 7.5 - h / 2, 93, 7.5 + h / 2 + 2];
-  }
+  if (k === "title") return [0, 0, 100, 22];
   if (k === "text" || k === "note") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
     const size: Size = k === "note" ? "s" : (op.size ?? "m");
