@@ -24,7 +24,7 @@ test("wrong quiz answers are explicitly recorded for targeted remediation", () =
   const next = recordCheckAnswer([], check, 1);
   assert.ok(next);
   assert.match(next[0].content, /A resistência aumentou/);
-  assert.match(next[2].content, /resposta estava incorrecta/);
+  assert.match(next[1].content, /resposta estava incorrecta/);
 });
 
 test("invalid quiz selections are rejected", () => {
