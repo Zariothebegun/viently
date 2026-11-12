@@ -24,7 +24,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v4";
+const CACHE_KEY = "viently.lessons.v5";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -193,29 +193,57 @@ export function sanitizeOps(raw: any): Op[] {
       case "graph": {
         const series = Array.isArray(o.series)
           ? o.series.slice(0, 4).map((s: any) => ({
-              label: s?.label ? String(s.label).slice(0, 16) : undefined,
+              label: s?.label ? String(s.label).slice(0, 22) : undefined,
               color: s?.color,
-              points: pts(s?.points, 24),
+              points: pts(s?.points, 40)
+                .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))
+                .sort((a, b) => a[0] - b[0]),
             })).filter((s: any) => s.points.length >= 2)
           : [];
+        const allX = series.flatMap((s: any) => s.points.map((p: [number, number]) => p[0]));
+        const allY = series.flatMap((s: any) => s.points.map((p: [number, number]) => p[1]));
+        const autoRange = (values: number[], fallback: [number, number]): [number, number] => {
+          let lo = values.length ? Math.min(...values) : fallback[0];
+          let hi = values.length ? Math.max(...values) : fallback[1];
+          if (lo === hi) {
+            const pad = Math.abs(lo) * 0.08 || 1;
+            lo -= pad;
+            hi += pad;
+          } else {
+            const pad = (hi - lo) * 0.04;
+            lo -= pad;
+            hi += pad;
+          }
+          return [lo, hi];
+        };
+        const suppliedX = o.x_range ? pt(o.x_range, [0, 1]) : null;
+        const suppliedY = o.y_range ? pt(o.y_range, [0, 1]) : null;
+        const xAuto = autoRange(allX, [0, 1]);
+        const yAuto = autoRange(allY, [0, 1]);
+        const xRange: [number, number] = suppliedX && suppliedX[0] < suppliedX[1]
+          ? [Math.min(suppliedX[0], xAuto[0]), Math.max(suppliedX[1], xAuto[1])]
+          : xAuto;
+        const yRange: [number, number] = suppliedY && suppliedY[0] < suppliedY[1]
+          ? [Math.min(suppliedY[0], yAuto[0]), Math.max(suppliedY[1], yAuto[1])]
+          : yAuto;
         out.push({
           op: "graph",
           at: o.at ? pt(o.at, [12, 22]) : [12, 22],
-          w: num(o.w, 44),
-          h: num(o.h, 30),
-          x_range: o.x_range ? pt(o.x_range, [0, 1]) : [0, 1],
-          y_range: o.y_range ? pt(o.y_range, [0, 1]) : [0, 1],
+          w: Math.max(20, num(o.w, 58)),
+          h: Math.max(18, num(o.h, 38)),
+          x_range: xRange,
+          y_range: yRange,
           series,
           markers: Array.isArray(o.markers)
-            ? o.markers.slice(0, 6).map((m: any) => ({
+            ? o.markers.slice(0, 8).map((m: any) => ({
                 at: pt(m?.at, [0, 0]),
-                label: m?.label ? String(m.label).slice(0, 16) : undefined,
+                label: m?.label ? String(m.label).slice(0, 20) : undefined,
                 color: m?.color,
               }))
             : [],
           title: o.title ? String(o.title).slice(0, 30) : undefined,
-          xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined,
-          ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined,
+          xlabel: o.xlabel ? String(o.xlabel).slice(0, 20) : undefined,
+          ylabel: o.ylabel ? String(o.ylabel).slice(0, 20) : undefined,
         });
         break;
       }
@@ -283,7 +311,7 @@ export function sanitizeOps(raw: any): Op[] {
 
 // corta um texto no fim da última frase completa que cabe no limite
 function fitSentence(raw: string, max: number): string {
-  const text = String(raw).replace(/s+/g, " ").trim();
+  const text = String(raw).replace(/\\s+/g, " ").trim();
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "));
