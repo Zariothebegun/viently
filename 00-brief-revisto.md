@@ -29,7 +29,7 @@ O modelo devolve dados estruturados. O código valida esses dados e o renderer f
 - Expo SDK 58, React 19, React Native 0.88 e TypeScript.
 - Uma aplicação principal em app-ios/App.tsx; não usar Expo Router sem uma decisão explícita de arquitectura.
 - SVG para diagramas 2D e WebView/Three.js para os modelos 3D.
-- OpenRouter para geração estruturada; chave BYOK guardada no dispositivo.
+- OpenRouter para geração estruturada; chave BYOK guardada no SecureStore/Keychain, com migração da chave antiga.
 - AsyncStorage para cache e progresso local.
 - Testes Node integrados com tsx, executados por npm test.
 - GitHub Actions valida TypeScript, testes, alinhamento Expo e exportação Metro para iOS.
