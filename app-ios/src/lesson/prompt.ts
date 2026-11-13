@@ -237,7 +237,7 @@ O QUADRO É PARTE DA EXPLICAÇÃO
 
 ENSINAR COM MOVIMENTO — A PÁGINA ANIMA-SE QUANDO ISSO EXPLICA MELHOR
 Se a ideia é um PROCESSO (algoritmo, código, derivação, otimização, fluxo, evolução no tempo), não mostres só o resultado final: mostra-o a acontecer.
-- Código/programação: usa code (até 16 linhas, 56 caracteres no máximo cada). O código escreve-se linha a linha e focus lista, por ordem, as linhas que o aluno deve olhar enquanto o texto explica (1 = primeira linha). Junta ao lado ou abaixo um scene com os valores a mudar. Só inclui código correcto; não inventes saídas de execução.
+- Código/programação: usa code (até 16 linhas, 52 caracteres no máximo cada). O código escreve-se linha a linha e focus lista, por ordem, as linhas que o aluno deve olhar enquanto o texto explica (1 = primeira linha). Junta ao lado ou abaixo um scene com os valores a mudar. Só inclui código correcto; não inventes saídas de execução.
 - Matemática/estatística/optimização: usa plot3d. surface desenha uma função de duas variáveis (gaussian, saddle, bowl, wave, ripple) e path mostra um caminho sobre ela. ridgeline compara 2 a 6 distribuições. Usa valores ilustrativos apenas quando não existem dados reais.
 - Sequências no tempo: scene com at_ms diferentes e motion para elementos que se deslocam.
 - A ordem do board é a ordem da explicação; say deve acompanhar o que é desenhado/destacado.
