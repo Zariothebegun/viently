@@ -465,9 +465,11 @@ export function parseLesson(raw: string): Lesson {
 
   // Formato actual: a página inteira num só objecto.
   const pageBoard = sanitizeOps(data.board)
-    .filter((o) => o.op !== "title")
+    .filter((o) => o.op !== "title" && o.op !== "clear" && o.op !== "erase")
     .slice(0, 10);
-  if (pageBoard.length >= 3) {
+  // A clear one- or two-element diagram can be valid; destructive-only
+  // boards were filtered above and must not count as teaching visuals.
+  if (pageBoard.length >= 1) {
     const say = String(data.say ?? "").replace(/\s+/g, " ").trim().slice(0, 420);
     const note = String(data.note ?? "")
       .replace(/\r/g, "")
