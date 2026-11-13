@@ -795,7 +795,7 @@ export default function App() {
     const title = (lesson.title?.trim() || opts.root || "Aula").slice(0, 48);
     const steps = lesson.steps;
     const prepared = steps.flatMap((step, sourceIndex) => {
-      const content = (step.write || step.say || "").replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\\s*/i, "").trim();
+      const content = (step.write || step.say || "").replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "").trim();
       return paginateLessonText(content).map((chunk, chunkIndex) => ({
         step, sourceIndex, chunk, chunkIndex,
       }));
@@ -857,7 +857,7 @@ export default function App() {
         state: "done",
         title: "Vamos testar?",
         subtitle: "Aplica a ideia que acabaste de aprender.",
-        stepIndex: steps.length,
+        stepIndex: prepared.length,
         stepCount: totalCount,
         say: "",
         line: "",
@@ -1385,10 +1385,8 @@ export default function App() {
               </View>
             );
           })()}
-          {pg.state === "done" ? (
-            <NoteText text={pg.line} />
-          ) : visibleLine ? (
-            <Text style={s.lineText}>{visibleLine}</Text>
+          {visibleLine ? (
+            <NoteText text={visibleLine} />
           ) : (
             <View style={s.linePlaceholder} />
           )}
@@ -2093,6 +2091,7 @@ const s = StyleSheet.create({
     fontSize: 18,
     color: INK,
     paddingVertical: 8,
+    maxHeight: 104,
     fontFamily: HAND,
   },
   send: {
