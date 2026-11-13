@@ -53,3 +53,10 @@ test("decimal numbers and abbreviations are never split at punctuation", () => {
   assert.equal(joined, source);
   assert.ok(pages.every((page) => page.length <= 50));
 });
+
+
+test("default page budget stays conservative for phone layouts", () => {
+  const pages = paginateLessonText("Explicação curta. ".repeat(40));
+  assert.ok(pages.length > 1);
+  assert.ok(pages.every((page) => page.length <= 165));
+});
