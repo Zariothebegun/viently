@@ -144,9 +144,9 @@ function toModel(it: any): SandflowModel | null {
     title,
     glb,
     thumb: String(it.thumbnail ?? ""),
-    author: "Polyfork",
-    licence: "CC0 / royalty free",
-    page: String(it.page ?? "https://polyfork.dev"),
+    author: String(it.author?.name ?? it.author ?? it.user?.name ?? "Autor não indicado").slice(0, 80),
+    licence: String(it.licence ?? it.license ?? it.license_name ?? "Licença não indicada").slice(0, 80),
+    page: String(it.page ?? it.url ?? "https://polyfork.dev"),
   };
 }
 
