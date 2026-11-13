@@ -42,5 +42,14 @@ test("numbered notes keep their line boundaries across pagination", () => {
 test("paragraphs and unicode text are retained", () => {
   const source = "A memória é rápida.\n\nO processador executa instruções.\nA saída mostra o resultado.";
   const pages = paginateLessonText(source, 80);
-  assert.equal(pages.join("\n"), source);
+  assert.equal(pages[0], source);
+});
+
+
+test("decimal numbers and abbreviations are never split at punctuation", () => {
+  const source = "A medida é 3.14 cm. O prof. explicou a diferença. Depois aplicamos a fórmula.";
+  const pages = paginateLessonText(source, 50);
+  const joined = pages.join(" ");
+  assert.equal(joined, source);
+  assert.ok(pages.every((page) => page.length <= 50));
 });
