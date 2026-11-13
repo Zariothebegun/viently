@@ -406,12 +406,7 @@ const StaticStep = memo(
               />
             </View>
             <View style={s.lineBox}>
-              {!!page.line && (
-                <Text style={s.lineText} numberOfLines={12}>
-                  <Text style={s.lineNum}>› </Text>
-                  {page.line}
-                </Text>
-              )}
+              {!!page.line && <NoteText text={page.line} />}
               <PageCards page={page} compact />
             </View>
           </>
@@ -1577,8 +1572,10 @@ export default function App() {
               placeholder="Pergunta o que quiseres…"
               placeholderTextColor="#a3aaa4"
               style={s.input}
-              onSubmitEditing={() => ask(q)}
-              returnKeyType="send"
+              multiline
+              maxLength={1200}
+              textAlignVertical="center"
+              blurOnSubmit={false}
             />
             {working ? (
               <Pressable style={s.send} onPress={stopPlayback}>
