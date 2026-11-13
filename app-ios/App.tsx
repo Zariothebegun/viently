@@ -419,6 +419,7 @@ export default function App() {
   const [key, setKey] = useState<string | null>(() => defaultKey());
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  const [keyError, setKeyError] = useState<string | null>(null);
   const [askedOnce, setAskedOnce] = useState(false);
   const [modelOpen, setModelOpen] = useState<ModelOpen | null>(null);
   const [activeHotspot, setActiveHotspot] = useState<string | null>(null);
@@ -1607,7 +1608,7 @@ export default function App() {
             </Text>
             <TextInput
               value={keyDraft}
-              onChangeText={setKeyDraft}
+              onChangeText={(value) => { setKeyDraft(value); setKeyError(null); }}
               placeholder="sk-or-v1-…"
               autoCapitalize="none"
               autoCorrect={false}
@@ -1618,10 +1619,15 @@ export default function App() {
               style={[s.primary, !looksLikeKey(keyDraft) && { opacity: 0.4 }]}
               disabled={!looksLikeKey(keyDraft)}
               onPress={async () => {
-                await saveKey(keyDraft);
-                setKey(keyDraft.trim());
-                setKeyDraft("");
-                setKeyOpen(false);
+                setKeyError(null);
+                try {
+                  await saveKey(keyDraft);
+                  setKey(keyDraft.trim());
+                  setKeyDraft("");
+                  setKeyOpen(false);
+                } catch {
+                  setKeyError("Não consegui guardar a chave no armazenamento seguro. Tenta novamente.");
+                }
               }}
             >
               <Text style={s.primaryText}>Guardar</Text>
@@ -1629,6 +1635,7 @@ export default function App() {
             <Pressable style={s.secondary} onPress={() => setKeyOpen(false)}>
               <Text style={s.secondaryText}>Agora não</Text>
             </Pressable>
+            {!!keyError && <Text style={s.keyError}>{keyError}</Text>}
             <Text style={s.modalFoot}>Chave actual: {key ? "ligada ✓" : "nenhuma"}</Text>
           </View>
         </View>
@@ -2143,6 +2150,12 @@ const s = StyleSheet.create({
   primaryText: { color: "#faf8f1", fontFamily: "Quicksand_700Bold", fontSize: 15 },
   secondary: { alignItems: "center", paddingVertical: 10 },
   secondaryText: { color: MUTED, fontFamily: "Quicksand_500Medium", fontSize: 14 },
+  keyError: {
+    color: "#a45c50",
+    fontFamily: "Quicksand_600SemiBold",
+    fontSize: 12,
+    lineHeight: 16,
+  },
   modalFoot: {
     color: "#a2a7b3",
     fontSize: 11.5,
