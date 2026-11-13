@@ -286,12 +286,13 @@ function capCallout(op: any, maxLen = 24) {
 export type LayoutResult = {
   ops: Op[];
   placed: Placed[];
+  dropped: number;
 };
 
 export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   const placed: Placed[] = [...prior];
   const displaced: { b: Box; dx: number; dy: number }[] = [];
-  const dropped: Box[] = [];
+  let droppedCount = 0;
   let hasTitle = ops.some((o) => o.op === "title");
   let areaUsed = placed.reduce((s, p) => s + (p.b[2] - p.b[0]) * (p.b[3] - p.b[1]), 0);
 
@@ -309,12 +310,16 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
         const child = element?.op;
         if (!child || typeof child !== "object") continue;
         const result = layoutPass([child as Op], childPlaced);
+        droppedCount += result.dropped;
         if (!result.ops.length) continue;
         elements.push({ ...element, op: result.ops[0] });
         childPlaced = result.placed;
       }
       op.elements = elements;
-      if (!elements.length) continue;
+      if (!elements.length) {
+        droppedCount++;
+        continue;
+      }
     }
     const stroke = ["curve", "line", "arrow", "motion"].includes(kind);
     const ylo = hasTitle && stroke ? 16.5 : 3;
@@ -338,7 +343,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       if (bb) {
         let est = (bb[2] - bb[0]) * (bb[3] - bb[1]);
         if (kind === "notes") est *= 0.6;
-        if (kind !== "title" && areaUsed + est > 5200) continue;
+        if (kind !== "title" && areaUsed + est > 5200) {
+          droppedCount++;
+          continue;
+        }
         areaUsed += est;
       }
     }
@@ -456,11 +464,13 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       }
     }
 
-    if (!best) continue;
+    if (!best) {
+      op._drop = true;
+      continue;
+    }
     if (best.score > 6) {
       // empilhado é pior do que ausente
       op._drop = true;
-      dropped.push([x0Of(op) - 3, y0Of(op) - 3, x0Of(op) + 6, y0Of(op) + 6]);
       continue;
     }
     const { pos, bbox } = best;
@@ -677,7 +687,8 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     }
   }
 
-  return { ops: work.filter((o) => !o._drop) as Op[], placed };
+  const droppedInWork = work.filter((o) => o._drop).length;
+  return { ops: work.filter((o) => !o._drop) as Op[], placed, dropped: droppedCount + droppedInWork };
 }
 
 function x0Of(op: any): number {
@@ -690,7 +701,11 @@ function y0Of(op: any): number {
 }
 
 // Aplica ops novas por cima do quadro existente, tratando clear/erase.
-export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => number): Item[] {
+export function applyOpsDetailed(
+  existing: Item[],
+  incoming: Op[],
+  nextSeed: () => number,
+): { items: Item[]; dropped: number } {
   let base = [...existing];
   const fresh: Op[] = [];
 
@@ -711,13 +726,18 @@ export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => numbe
     .filter((b): b is Box => !!b)
     .map((b) => ({ b, w: 1 }));
 
-  const { ops } = layoutPass(fresh, prior);
-  return [
+  const result = layoutPass(fresh, prior);
+  const items = [
     ...base,
-    ...ops.map((op, i) => ({
+    ...result.ops.map((op, i) => ({
       id: `op-${nextSeed()}-${i}`,
       op,
       seed: nextSeed(),
     })),
   ];
+  return { items, dropped: result.dropped };
+}
+
+export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => number): Item[] {
+  return applyOpsDetailed(existing, incoming, nextSeed).items;
 }
