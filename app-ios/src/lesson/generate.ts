@@ -42,7 +42,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
   // Cache version is bumped when lesson structure/prompt rules change. Include
   // the learner profile and the same six history turns sent to the model.
   const tail = input.history.slice(-6)
-    .map((m) => `${m.role}:${String(m.content ?? "").slice(-700)}`)
+    .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
     `lesson-v7|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
