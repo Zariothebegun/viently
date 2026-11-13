@@ -1,19 +1,39 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 const KEY = "viently.openrouter.key";
 
-// Não ler chaves de EXPO_PUBLIC_*: essas variáveis são embutidas no
-// bundle e podem ser extraídas da aplicação. A chave BYOK é introduzida pelo
-// utilizador e guardada no armazenamento privado da app.
+// The BYOK key lives in the OS-backed secure store. The AsyncStorage read is
+// only a one-time migration for keys saved by older app versions.
 export async function loadKey(): Promise<string | null> {
-  return AsyncStorage.getItem(KEY);
+  try {
+    const secure = await SecureStore.getItemAsync(KEY);
+    if (secure) return secure;
+
+    const legacy = await AsyncStorage.getItem(KEY);
+    if (!legacy) return null;
+
+    await SecureStore.setItemAsync(KEY, legacy);
+    await AsyncStorage.removeItem(KEY);
+    return legacy;
+  } catch {
+    // Do not silently fall back to storing/using a plaintext key.
+    return null;
+  }
 }
 
 export async function saveKey(key: string): Promise<void> {
-  await AsyncStorage.setItem(KEY, key.trim());
+  const value = key.trim();
+  if (!value) {
+    await clearKey();
+    return;
+  }
+  await SecureStore.setItemAsync(KEY, value);
+  await AsyncStorage.removeItem(KEY);
 }
 
 export async function clearKey(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEY);
   await AsyncStorage.removeItem(KEY);
 }
 
