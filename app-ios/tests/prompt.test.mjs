@@ -41,3 +41,12 @@ test("later pages use history as evidence without assuming mastery", () => {
   assert.ok(prompt.includes("APLICAÇÃO AUTÓNOMA"));
   assert.ok(prompt.includes("aprendizagem verificável"));
 });
+
+
+test("depths beyond nine move into new advanced teaching modes", () => {
+  assert.ok(lessonSystem({ depth: 10 }).includes("INVESTIGAÇÃO"));
+  assert.ok(lessonSystem({ depth: 11 }).includes("DESENHO DE SISTEMAS"));
+  assert.ok(lessonSystem({ depth: 14 }).includes("CONTRAPONTO"));
+  assert.ok(lessonSystem({ depth: 15 }).includes("PROJECTO"));
+  assert.ok(lessonSystem({ depth: 15 }).includes("camada avançada 2"));
+});
