@@ -1347,7 +1347,7 @@ export default function App() {
                 overflow: "hidden",
               }}
             >
-              <LiveModel op={modelOp} visible={modelVisible} onOpen={setModelOpen} />
+              <LiveModel op={modelOp} visible={modelOpen ? 0 : modelVisible} onOpen={setModelOpen} />
             </View>
           )}
         </View>}
