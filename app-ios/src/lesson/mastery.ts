@@ -36,7 +36,7 @@ export function updateMastery(
 ): MasteryStore {
   const key = normalizeTopic(topic);
   if (!key) return store ?? EMPTY;
-  const safe = store?.version === 1 && store.topics ? store : EMPTY;
+  const safe = sanitizeMasteryStore(store);
   const previous = safe.topics[key] ?? { attempts: 0, correct: 0, recent: [], updatedAt: 0 };
   const recent = [...previous.recent, !!wasCorrect].slice(-RECENT_WINDOW);
   const topics = {
@@ -81,12 +81,30 @@ export function masteryProfile(store: MasteryStore | null | undefined, topic: st
   return `${evidence} Domínio parcial ou irregular. Mantém o nível, identifica a confusão específica e alterna explicação curta com aplicação guiada.`;
 }
 
+export function sanitizeMasteryStore(value: unknown): MasteryStore {
+  if (!value || typeof value !== "object") return EMPTY;
+  const candidate = value as Partial<MasteryStore>;
+  if (candidate.version !== 1 || !candidate.topics || typeof candidate.topics !== "object") return EMPTY;
+  const topics: Record<string, TopicMastery> = {};
+  for (const [rawKey, rawRecord] of Object.entries(candidate.topics)) {
+    const key = normalizeTopic(rawKey);
+    if (!key || !rawRecord || typeof rawRecord !== "object") continue;
+    const record = rawRecord as Partial<TopicMastery>;
+    const attempts = Number(record.attempts);
+    const correct = Number(record.correct);
+    const updatedAt = Number(record.updatedAt);
+    if (!Number.isInteger(attempts) || attempts < 0 || !Number.isInteger(correct) || correct < 0 || correct > attempts || !Number.isFinite(updatedAt) || !Array.isArray(record.recent)) continue;
+    const recent = record.recent.filter((entry): entry is boolean => typeof entry === "boolean").slice(-RECENT_WINDOW);
+    topics[key] = { attempts, correct, recent, updatedAt };
+  }
+  const trimmed = Object.fromEntries(Object.entries(topics).sort((a, b) => b[1].updatedAt - a[1].updatedAt).slice(0, MAX_TOPICS));
+  return { version: 1, topics: trimmed };
+}
+
 export async function loadMastery(): Promise<MasteryStore> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed?.version !== 1 || !parsed.topics || typeof parsed.topics !== "object") return EMPTY;
-    return parsed as MasteryStore;
+    return sanitizeMasteryStore(raw ? JSON.parse(raw) : null);
   } catch {
     return EMPTY;
   }
