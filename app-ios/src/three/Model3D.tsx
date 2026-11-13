@@ -39,6 +39,12 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
   const [pick, setPick] = useState<{ name: string; note: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (ready || err) return;
+    const timeout = setTimeout(() => setErr("o modelo demorou demasiado tempo a carregar"), 12000);
+    return () => clearTimeout(timeout);
+  }, [ready, err]);
+
   const send = (js: string) => ref.current?.injectJavaScript(`${js};true;`);
 
   useEffect(() => {
