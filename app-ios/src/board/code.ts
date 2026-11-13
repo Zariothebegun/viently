@@ -7,7 +7,7 @@ export function tokenizeLine(line:string):Token[] {
  const out:Token[]=[]; const push=(text:string,kind:TokenKind)=>{if(text)out.push({text,kind});}; let i=0;
  while(i<line.length){const ch=line[i];
   if(ch==="#"||(ch==="/"&&line[i+1]==="/")){push(line.slice(i),"com");break;}
-  if(ch==='"'||ch==="'"||ch="`"){let j=i+1;while(j<line.length&&line[j]!==ch){if(line[j]==="\\")j++;j++;}push(line.slice(i,Math.min(line.length,j+1)),"str");i=Math.min(line.length,j+1);continue;}
+  if(ch==='"'||ch==="'"||ch==="`"){let j=i+1;while(j<line.length&&line[j]!==ch){if(line[j]==="\\")j++;j++;}push(line.slice(i,Math.min(line.length,j+1)),"str");i=Math.min(line.length,j+1);continue;}
   if(/[0-9]/.test(ch)||(ch==="."&&/[0-9]/.test(line[i+1]??""))){let j=i+1;while(j<line.length&&/[0-9._eE]/.test(line[j]))j++;push(line.slice(i,j),"num");i=j;continue;}
   if(/[A-Za-z_]/.test(ch)){let j=i+1;while(j<line.length&&/[A-Za-z0-9_]/.test(line[j]))j++;const word=line.slice(i,j);push(word,KEYWORDS.has(word)?"kw":line[j]==="("?"fn":"txt");i=j;continue;}
   if(/\s/.test(ch)){let j=i+1;while(j<line.length&&/\s/.test(line[j]))j++;push(line.slice(i,j),"txt");i=j;continue;}
