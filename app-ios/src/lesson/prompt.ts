@@ -31,6 +31,9 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
     {"at_ms":250,"duration_ms":1600,"op":{"op":"motion","points":[[22,35],[48,35],[76,35]],"label":"Fluxo","color":"orange","duration_ms":1600}},
     {"at_ms":1600,"duration_ms":700,"op":{"op":"text","at":[78,48],"text":"Resultado","color":"green","size":"s"}}
   ]}
+  {"op":"code","title":"ficheiro.py","lang":"python","at":[3,4],"w":94,"lines":["import numpy as np","x = 3.0","for i in range(5):","    x = x - 0.1 * 2 * x"],"focus":[2,3,4]}
+  {"op":"plot3d","kind":"surface","fn":"bowl","at":[10,8],"w":78,"h":46,"title":"Descida do gradiente","path":[[0.9,0.8],[0.6,0.5],[0.3,0.25],[0.05,0.05]],"marker":{"at":[0,0],"label":"mínimo"},"xlabel":"x","ylabel":"y","zlabel":"erro"}
+  {"op":"plot3d","kind":"ridgeline","at":[8,8],"w":84,"h":48,"xlabel":"valor final","groups":[{"label":"calmo","mean":10,"spread":2},{"label":"médio","mean":12,"spread":4,"skew":2},{"label":"selvagem","mean":14,"spread":7,"skew":4}]}
   {"op":"highlight","at":[x,y],"w":20}
 Cores: ink, blue, red, green, orange, purple, gray.
 Cores com significado: blue = entrada/dado, green = resultado, red = atenção,
@@ -120,7 +123,7 @@ ESTRUTURA DO JSON
   "mistake": {"wrong": "interpretação errada plausível", "right": "correcção e motivo"},
   "recap": {"title": "O essencial", "lines": ["ideia-chave", "consequência prática"]},
   "check": {"prompt": "pergunta que testa compreensão", "options": ["A", "B", "C"], "answer_index": 0, "explanation": "porque é essa a resposta"},
-  "board": [<4 a 8 operações visuais>],
+  "board": [<4 a 8 operações visuais; em temas de código/processo, inclui code e/ou plot3d>],
   "suggestions": ["pergunta de continuação 1", "pergunta de continuação 2"]
 }
 
@@ -231,6 +234,15 @@ O QUADRO É PARTE DA EXPLICAÇÃO
 - Para história ou ciências sociais, representa cronologia, actores, causas e
   consequências sem sugerir causalidade quando só há correlação.
 - Usa 4 a 8 ops úteis. Não acrescentes formas só para atingir uma quantidade.
+
+ENSINAR COM MOVIMENTO — A PÁGINA ANIMA-SE QUANDO ISSO EXPLICA MELHOR
+Se a ideia é um PROCESSO (algoritmo, código, derivação, otimização, fluxo, evolução no tempo), não mostres só o resultado final: mostra-o a acontecer.
+- Código/programação: usa code (até 16 linhas, 56 caracteres no máximo cada). O código escreve-se linha a linha e focus lista, por ordem, as linhas que o aluno deve olhar enquanto o texto explica (1 = primeira linha). Junta ao lado ou abaixo um scene com os valores a mudar. Só inclui código correcto; não inventes saídas de execução.
+- Matemática/estatística/optimização: usa plot3d. surface desenha uma função de duas variáveis (gaussian, saddle, bowl, wave, ripple) e path mostra um caminho sobre ela. ridgeline compara 2 a 6 distribuições. Usa valores ilustrativos apenas quando não existem dados reais.
+- Sequências no tempo: scene com at_ms diferentes e motion para elementos que se deslocam.
+- A ordem do board é a ordem da explicação; say deve acompanhar o que é desenhado/destacado.
+- Não animes por decoração: cada movimento tem de mostrar um passo causal.
+- code e plot3d ocupam bastante espaço: usa no máximo um destes por página, mais 2 ou 3 ops de apoio.
 
 3D
 - Usa no máximo UM model3d, apenas se existir um modelo adequado e ele ajudar
