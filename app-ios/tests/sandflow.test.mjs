@@ -32,5 +32,6 @@ test("3D cache is bounded and ordered by most recent use", () => {
   const cache = sanitizeSandflowCache(entries);
   assert.equal(Object.keys(cache).length, 60);
   assert.equal(cache["69"].at, 69);
-  assert.equal(cache["10"], undefined);
+  assert.equal(cache["10"].at, 10);
+  assert.equal(cache["9"], undefined);
 });
