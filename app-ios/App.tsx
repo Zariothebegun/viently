@@ -734,10 +734,10 @@ export default function App() {
     later(() => moveBlue(lineAnchor(g, p.line.length)), 20);
     const line = p.line ?? "";
     if (line) {
-      for (let i = 1; i <= line.length; i += 2) {
+      for (let i = 1; i <= line.length; i += 3) {
         if (playingIdRef.current !== p.id) return;
         setLineN(i);
-        await wait(18);
+        await wait(33);
       }
     }
     if (playingIdRef.current !== p.id) return;
