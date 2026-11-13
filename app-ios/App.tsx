@@ -131,29 +131,6 @@ function topicFrom(question: string): string {
   return t.length > 42 ? `${t.slice(0, 40).trimEnd()}…` : t;
 }
 
-function writeOf(step: Step): string {
-  const w = (step.write ?? "")
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((l) => l.replace(/[ \t]+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n")
-    .split("\n")
-    .slice(0, 3)
-    .map((line) => line.length > 74 ? `${line.slice(0, 70).trimEnd()}…` : line)
-    .join("\n")
-    .slice(0, 224);
-  if (w) return w;
-  const s = (step.say ?? "")
-    .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (s.length <= 220) return s;
-  const cut = s.slice(0, 220);
-  const end = cut.lastIndexOf(" ");
-  return cut.slice(0, end > 150 ? end : 220).trimEnd() + "…";
-}
-
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
@@ -604,7 +581,7 @@ export default function App() {
   function lineAnchor(g: Geom, chars = 0): { x: number; y: number } {
     const lineTop = g.boardY + g.bh + 8;
     const perLine = Math.max(24, Math.floor((g.w - 56) / 8.2));
-    const lines = Math.max(1, Math.min(3, Math.ceil(chars / perLine)));
+    const lines = Math.max(1, Math.ceil(chars / perLine));
     return {
       x: 10,
       y: Math.min(g.h - 150, lineTop + (lines - 1) * 21 - 6),
