@@ -29,7 +29,7 @@ import {
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { Board } from "./src/board/Board";
-import { applyOps, opBBox } from "./src/board/layout";
+import { applyOpsDetailed, opBBox } from "./src/board/layout";
 import type { Check, Item, Lesson, Op, Step } from "./src/board/ops";
 import { generateLesson, DEFAULT_MODEL } from "./src/lesson/generate";
 import { recordCheckAnswer } from "./src/lesson/feedback";
@@ -88,6 +88,7 @@ type StepPage = BasePage & {
   check?: Check;
   answered?: number;
   quizOnly?: boolean;
+  layoutWarning?: boolean;
 };
 
 type Page = HeroPage | StepPage | LoadPage;
@@ -382,6 +383,7 @@ const StaticStep = memo(
                 paper={false}
               />
             </View>
+            {page.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
             <View style={s.lineBox}>
               {!!page.line && <NoteText text={page.line} />}
               <PageCards page={page} compact />
@@ -786,9 +788,10 @@ export default function App() {
       // explicação longa num único passo, ela é dividida sem cortar conteúdo.
       const firstChunk = chunkIndex === 0;
       const before: Item[] = [];
-      const next = firstChunk
-        ? applyOps(before, step.board as Op[], nextSeed)
-        : before;
+      const layoutResult = firstChunk
+        ? applyOpsDetailed(before, step.board as Op[], nextSeed)
+        : { items: before, dropped: 0 };
+      const next = layoutResult.items;
       const beforeIds = new Set(before.map((it) => it.id));
       const lastPage = pageIndex === prepared.length - 1;
 
@@ -799,6 +802,7 @@ export default function App() {
         depth: opts.depth,
         history: opts.history,
         items: next,
+        layoutWarning: layoutResult.dropped > 0,
         newIds: next.filter((it) => !beforeIds.has(it.id)).map((it) => it.id),
         suggestions: !lesson.check && lastPage ? lesson.suggestions ?? [] : [],
         state: "idle",
@@ -1352,6 +1356,7 @@ export default function App() {
           )}
         </View>}
 
+        {!pg.quizOnly && pg.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
         {!pg.quizOnly && <View style={[s.lineBox, { maxHeight: 290 }]}>
           {!!activeHotspot && (() => {
             const hit = pg.items.find((item) => item.id === activeHotspot);
@@ -1763,6 +1768,15 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
   linePlaceholder: { paddingTop: 7 },
+  layoutWarning: {
+    marginHorizontal: 22,
+    marginTop: 3,
+    marginBottom: 4,
+    color: "#8a775b",
+    fontFamily: "Quicksand_500Medium",
+    fontSize: 10.5,
+    lineHeight: 14,
+  },
 
   bottomArea: { flex: 1, justifyContent: "flex-end", paddingBottom: 6 },
 
