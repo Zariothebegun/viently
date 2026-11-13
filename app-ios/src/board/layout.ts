@@ -45,6 +45,15 @@ export function opBBox(op: any): Box | null {
     // inclui a faixa do título e dos eixos, senão o texto cai em cima deles
     return [x - 20, y - 9, x + (op.w ?? 44) + 5, y + (op.h ?? 30) + 11];
   }
+  if (k === "code") {
+    const [x, y] = (op.at ?? [3, 4]) as Pt;
+    const n = Array.isArray(op.lines) ? op.lines.length : 8;
+    return [x, y, x + (op.w ?? 94), y + (op.h ?? 7.8 + n * 3.9)];
+  }
+  if (k === "plot3d") {
+    const [x, y] = (op.at ?? [10, 10]) as Pt;
+    return [x, y - 4, x + (op.w ?? 70), y + (op.h ?? 44) + 6];
+  }
   if (k === "box" || k === "ellipse" || k === "axes") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
     const w = Number(op.w ?? 20);
@@ -328,17 +337,19 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     if (op.to) op.to = clampPt(op.to, ylo);
     if (op.around) op.around = clampPt(op.around, ylo);
     if (Array.isArray(op.points)) op.points = op.points.slice(0, 12).map((p: Pt) => clampPt(p, ylo));
-    if (["box", "ellipse", "axes", "graph", "model3d"].includes(kind)) {
+    if (["box", "ellipse", "axes", "graph", "model3d", "code", "plot3d"].includes(kind)) {
       const [rawX, rawY] = op.at ?? [10, 20];
       const x = Math.min(96, Math.max(2, Number(rawX) || 2));
       const y = Math.min(71, Math.max(3, Number(rawY) || 3));
       op.at = [x, y];
-      const defaultW = kind === "model3d" ? 54 : 20;
-      const defaultH = kind === "model3d" ? 38 : 10;
+      const defaultW = kind === "model3d" ? 54 : kind === "code" ? 94 : kind === "plot3d" ? 70 : 20;
+      const defaultH = kind === "model3d" ? 38
+        : kind === "code" ? 7.8 + (Array.isArray(op.lines) ? op.lines.length : 8) * 3.9
+        : kind === "plot3d" ? 44 : 10;
       op.w = Math.max(1, Math.min(Number(op.w ?? defaultW) || defaultW, 98 - x));
       op.h = Math.max(1, Math.min(Number(op.h ?? defaultH) || defaultH, 73 - y));
     }
-    if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d", "scene", "hotspot"].includes(kind)) {
+    if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d", "scene", "hotspot", "code", "plot3d"].includes(kind)) {
       const bb = opBBox(op);
       if (bb) {
         let est = (bb[2] - bb[0]) * (bb[3] - bb[1]);
@@ -385,7 +396,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       if (b) placed.push({ b, w: 2.5 });
       continue;
     }
-    if (!["box", "ellipse", "axes", "graph", "polygon", "notes", "model3d"].includes(kind)) continue;
+    if (!["box", "ellipse", "axes", "graph", "polygon", "notes", "model3d", "code", "plot3d"].includes(kind)) continue;
 
     if (kind === "notes" && !op.compact && solidArea(placed) > 2600) op.compact = true;
     const originalBBox = opBBox(op);
