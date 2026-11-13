@@ -235,7 +235,7 @@ export function sanitizeOps(raw: any): Op[] {
         break;
       }
       case "code": {
-        const lines = Array.isArray(o.lines) ? o.lines.slice(0, 16).map((v: any) => String(v ?? "").replace(/\t/g, "    ").replace(/\\s+$/, "").slice(0, 64)) : typeof o.code === "string" ? String(o.code).replace(/\r/g, "").split("\n").slice(0, 16).map((v) => v.replace(/\t/g, "    ").replace(/\\s+$/, "").slice(0, 64)) : [];
+        const lines = Array.isArray(o.lines) ? o.lines.slice(0, 16).map((v: any) => String(v ?? "").replace(/\t/g, "    ").replace(/\s+$/, "").slice(0, 64)) : typeof o.code === "string" ? String(o.code).replace(/\r/g, "").split("\n").slice(0, 16).map((v) => v.replace(/\t/g, "    ").replace(/\s+$/, "").slice(0, 64)) : [];
         while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
         if (!lines.length) break;
         const focus = Array.isArray(o.focus) ? Array.from(new Set(o.focus.map((v: any) => Math.round(num(v, 0))).filter((v: number) => v >= 1 && v <= lines.length))).slice(0, 8) as number[] : undefined;
