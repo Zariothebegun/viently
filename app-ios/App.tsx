@@ -30,6 +30,7 @@ import {
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { Board } from "./src/board/Board";
+import { totalSeconds } from "./src/board/timeline";
 import { applyOpsDetailed, opBBox } from "./src/board/layout";
 import type { Check, Item, Lesson, Op, Step } from "./src/board/ops";
 import { generateLesson, DEFAULT_MODEL } from "./src/lesson/generate";
@@ -510,6 +511,9 @@ export default function App() {
     }
     if (item.op.op === "scene") {
       return Math.max(250, Math.min(10000, Number(item.op.duration_ms) || 900));
+    }
+    if (item.op.op === "code" || item.op.op === "plot3d") {
+      return Math.round(Math.max(1800, Math.min(9000, totalSeconds(item) * 1000 * 0.85)));
     }
     const base = item.op.op === "graph" || item.op.op === "notes" ? 1.4 : 1;
     return Math.round(Math.max(70, Math.min(300, 150 * base)));
