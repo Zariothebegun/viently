@@ -35,11 +35,11 @@ function validCachedModel(value: any): value is SandflowModel {
   return !!value && typeof value === "object"
     && typeof value.id === "string" && value.id.length > 0
     && typeof value.title === "string" && value.title.length > 0
-    && typeof value.glb === "string" && /^https:\\/\\//i.test(value.glb)
+    && typeof value.glb === "string" && value.glb.startsWith("https://")
     && typeof value.thumb === "string"
     && typeof value.author === "string"
     && typeof value.licence === "string"
-    && typeof value.page === "string" && /^https:\\/\\//i.test(value.page);
+    && typeof value.page === "string" && value.page.startsWith("https://");
 }
 
 export function sanitizeSandflowCache(value: unknown): Cache {
@@ -163,7 +163,7 @@ function rank(items: any[], query: string): any | null {
 function toModel(it: any): SandflowModel | null {
   const id = String(it.id ?? "");
   const glb = String(it.preview_glb || `${API.replace("/api", "")}/cdn/${encodeURIComponent(id)}.glb`);
-  if (!id || !/^https:\\/\\//i.test(glb)) return null;
+  if (!id || !glb.startsWith("https://")) return null;
   const title = String(it.title ?? "modelo 3D").replace(/\s+/g, " ").trim().slice(0, 60);
   const author = typeof it.author === "string" ? it.author : it.author?.name ?? it.user?.name;
   const licence = typeof it.licence === "string"
@@ -175,10 +175,10 @@ function toModel(it: any): SandflowModel | null {
     id,
     title,
     glb,
-    thumb: /^https:\\/\\//i.test(String(it.thumbnail ?? "")) ? String(it.thumbnail) : "",
+    thumb: String(it.thumbnail ?? "").startsWith("https://") ? String(it.thumbnail) : "",
     author: String(author ?? "Autor não indicado").slice(0, 80),
     licence: String(licence ?? "Licença não indicada").slice(0, 80),
-    page: /^https:\\/\\//i.test(String(it.page ?? "")) ? String(it.page) : "https://polyfork.dev",
+    page: String(it.page ?? "").startsWith("https://") ? String(it.page) : "https://polyfork.dev",
   };
 }
 
