@@ -48,5 +48,5 @@ Nenhum.
 - Pré-visualização via **Expo Go** com `--tunnel`: sem Mac, sem Xcode, sem conta de developer.
 - 3D vem de **geometria paramétrica escrita à mão** dentro de uma **WebView** com three.js
   (o `expo-gl`/`expo-three` está parado e quebra na New Architecture). Sem GLB, sem dev build.
-- Animações e ilustrações geradas ficam **fora da v1**.
+- Animações pedagógicas suportadas: `scene`/`motion`, `code` (escrita e foco por linha) e `plot3d` (superfícies/ridgelines em SVG); simulações com controlos do aluno continuam fora.
 - O modelo devolve **JSON validado** (Zod), nunca código nem UI.
