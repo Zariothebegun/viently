@@ -36,3 +36,17 @@ test("empty topic does not create a record", () => {
   const store = updateMastery(null, "  ", true, 1);
   assert.deepEqual(store.topics, {});
 });
+
+
+test("malformed persisted topic records are discarded safely", async () => {
+  const { sanitizeMasteryStore } = await import("../src/lesson/mastery.ts");
+  const safe = sanitizeMasteryStore({
+    version: 1,
+    topics: {
+      "tema válido": { attempts: 2, correct: 1, recent: [true, false], updatedAt: 10 },
+      "tema inválido": { attempts: "muitos", correct: 99, recent: "sim", updatedAt: NaN },
+    },
+  });
+  assert.equal(safe.topics["tema valido"].attempts, 2);
+  assert.equal(safe.topics["tema invalido"], undefined);
+});
