@@ -139,14 +139,20 @@ function toModel(it: any): SandflowModel | null {
   const glb = String(it.preview_glb || `${API.replace("/api", "")}/cdn/${id}.glb`);
   if (!id || !glb) return null;
   const title = String(it.title ?? "modelo 3D").replace(/\s+/g, " ").trim().slice(0, 60);
+  const author = typeof it.author === "string" ? it.author : it.author?.name ?? it.user?.name;
+  const licence = typeof it.licence === "string"
+    ? it.licence
+    : typeof it.license === "string"
+      ? it.license
+      : it.license?.name ?? it.license?.spdx_id ?? it.license_name;
   return {
     id,
     title,
     glb,
     thumb: String(it.thumbnail ?? ""),
-    author: String(it.author?.name ?? it.author ?? it.user?.name ?? "Autor não indicado").slice(0, 80),
-    licence: String(it.licence ?? it.license ?? it.license_name ?? "Licença não indicada").slice(0, 80),
-    page: String(it.page ?? it.url ?? "https://polyfork.dev"),
+    author: String(author ?? "Autor não indicado").slice(0, 80),
+    licence: String(licence ?? "Licença não indicada").slice(0, 80),
+    page: String(it.page ?? "https://polyfork.dev"),
   };
 }
 
