@@ -1086,6 +1086,9 @@ const clock = new THREE.Clock();
 function post(obj) {
   if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(obj));
 }
+window.addEventListener("error", function () {
+  post({ type: "error", message: "não consegui abrir o modelo 3D" });
+});
 
 let frames = 0;
 function loop() {
@@ -1128,7 +1131,14 @@ function loop() {
     dirty = false;
   }
   frames++;
-  if (frames === 1) post({ type: "ready" });
+  if (frames === 1) {
+    const boot = document.getElementById("boot");
+    if (boot) {
+      boot.style.opacity = "0";
+      setTimeout(function () { if (boot) boot.style.display = "none"; }, 400);
+    }
+    post({ type: "ready" });
+  }
   if (spin || Math.abs(explodeTarget - explodeT) > 0.002) wake();
 }
 wake();
@@ -1271,14 +1281,6 @@ export function buildModelHtml(model: ModelId, mode: ModelMode = "modal"): strin
 </script>
 <script type="module">
 ${js}
-document.getElementById("boot").style.opacity = "0";
-setTimeout(function () {
-  var b = document.getElementById("boot");
-  if (b) b.style.display = "none";
-  if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "ready" }));
-  }
-}, 550);
 </script>
 <script>
   setTimeout(function () {
