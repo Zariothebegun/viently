@@ -1,3 +1,4 @@
+import { Caveat_700Bold } from "@expo-google-fonts/caveat";
 import {
   GochiHand_400Regular,
   useFonts,
@@ -400,6 +401,7 @@ const StaticStep = memo(
 
 export default function App() {
   const [fontsLoaded] = useFonts({
+    Caveat_700Bold,
     GochiHand_400Regular,
     Quicksand_400Regular,
     Quicksand_500Medium,
