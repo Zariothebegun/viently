@@ -41,6 +41,7 @@ import {
   wrapText,
 } from "./geom";
 import { partFrac, timingOf, type Timing } from "./timeline";
+import { CodeBlock, Plot3dBlock } from "./Blocks";
 import type { Item, Pt, Size } from "./ops";
 
 const W = 0.55;
@@ -642,6 +643,12 @@ function renderOp(item: Item, frac: number, onHotspotPress?: (id: string) => voi
       });
       return <G key={item.id}>{rows}</G>;
     }
+
+    case "code":
+      return <CodeBlock key={item.id} op={o} frac={frac} t={tm} />;
+
+    case "plot3d":
+      return <Plot3dBlock key={item.id} op={o} frac={frac} t={tm} />;
 
     case "graph":
       return <GraphOp key={item.id} op={o} frac={frac} seed={seed} t={tm} />;
