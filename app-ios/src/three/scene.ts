@@ -65,7 +65,7 @@ scene.add(new THREE.HemisphereLight(0xfffdf2, 0x8d939d, 0.9));
 const key = new THREE.DirectionalLight(0xfff7ea, 2.0);
 key.position.set(2.6, 3.6, 2.4);
 key.castShadow = !INLINE;
-key.shadow.mapSize.set(1024, 1024);
+key.shadow.mapSize.set(512, 512);
 key.shadow.camera.left = -3.2;
 key.shadow.camera.right = 3.2;
 key.shadow.camera.top = 3.2;
