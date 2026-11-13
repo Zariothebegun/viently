@@ -1,6 +1,6 @@
 // Paginação estrutural: mantém listas e parágrafos; nunca divide números
 // decimais ou abreviaturas por tratar cada ponto como fim de frase.
-const DEFAULT_PAGE_CHARS = 210;
+const DEFAULT_PAGE_CHARS = 165;
 
 export function paginateLessonText(value: string, maxChars = DEFAULT_PAGE_CHARS): string[] {
   const source = String(value ?? "").replace(/\r\n?/g, "\n").trim();
