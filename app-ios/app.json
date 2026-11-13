@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "pt.epc.viently" 
+      "bundleIdentifier": "pt.epc.viently"
     },
     "android": {
       "package": "pt.epc.viently",
