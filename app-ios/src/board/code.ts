@@ -14,7 +14,7 @@ export function tokenizeLine(line:string):Token[] {
   push(ch,"op");i++;
  } return out;
 }
-export const CODE_CHAR_W=1.58,CODE_LINE_H=3.9,CODE_HEADER_H=5.4,CODE_GUTTER_W=5.6;
+export const CODE_CHAR_W=1.58,CODE_LINE_H=3.8,CODE_HEADER_H=5.4,CODE_GUTTER_W=5.6;
 export function codeCharsPerLine(w:number){return Math.max(12,Math.floor((w-CODE_GUTTER_W-3)/CODE_CHAR_W));}
 export function codeDefaultHeight(n:number){return CODE_HEADER_H+2.4+n*CODE_LINE_H;}
 export function codeTotalChars(lines:string[]){return lines.reduce((s,l)=>s+l.length,0);}
