@@ -869,7 +869,6 @@ function buildLabels() {
 }
 
 let dirty = true;
-    wake();
 let needFit = true;
 let frameHandle = 0;
 function wake() {
