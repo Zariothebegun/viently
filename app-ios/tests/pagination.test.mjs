@@ -27,3 +27,20 @@ test("oversized unbroken tokens are bounded instead of overflowing a page", () =
   const pages = paginateLessonText("x".repeat(125), 50);
   assert.deepEqual(pages.map((page) => page.length), [50, 50, 25]);
 });
+
+
+test("numbered notes keep their line boundaries across pagination", () => {
+  const source = "1. RAM: guarda dados temporários.\n2. CPU: executa instruções.\n3. SSD: guarda ficheiros mesmo sem energia.";
+  const pages = paginateLessonText(source, 70);
+  const joined = pages.join("\n");
+  assert.match(joined, /1\. RAM:/);
+  assert.match(joined, /2\. CPU:/);
+  assert.match(joined, /3\. SSD:/);
+  assert.ok(pages.every((page) => page.length <= 70));
+});
+
+test("paragraphs and unicode text are retained", () => {
+  const source = "A memória é rápida.\n\nO processador executa instruções.\nA saída mostra o resultado.";
+  const pages = paginateLessonText(source, 80);
+  assert.equal(pages.join("\n"), source);
+});
