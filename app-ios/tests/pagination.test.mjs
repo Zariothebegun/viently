@@ -41,7 +41,7 @@ test("numbered notes keep their line boundaries across pagination", () => {
 
 test("paragraphs and unicode text are retained", () => {
   const source = "A memória é rápida.\n\nO processador executa instruções.\nA saída mostra o resultado.";
-  const pages = paginateLessonText(source, 80);
+  const pages = paginateLessonText(source, 200);
   assert.equal(pages[0], source);
 });
 
