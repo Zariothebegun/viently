@@ -42,7 +42,7 @@ O modelo devolve conteúdo e operações visuais como dados. Nunca devolve JSX, 
 | Quadro 2D | SVG em src/board/Board.tsx |
 | Layout 2D | src/board/layout.ts, estimativa geométrica e prevenção de colisões |
 | Modelos 3D | presets locais e catálogo Polyfork, renderizados em WebView/Three.js |
-| Continuidade | histórico por página, sugestões de continuação e profundidade |
+| Chave BYOK | expo-secure-store, com migração da chave antiga |\n| Continuidade | histórico por página, sugestões de continuação e profundidade |
 | Aprendizagem | src/lesson/mastery.ts, evidência local em AsyncStorage |
 | Cache | AsyncStorage, chave inclui perfil, profundidade e histórico recente |
 | Testes | app-ios/tests/*.test.mjs, executados com npm test |
