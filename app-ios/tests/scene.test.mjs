@@ -4,9 +4,11 @@ import { test } from "node:test";
 import { buildModelHtml, buildPolyHtml } from "../src/three/scene.ts";
 
 function moduleSource(html) {
-  const match = html.match(/<script type="module">([\s\S]*?)<\/script>/);
-  assert.ok(match, "generated HTML must contain a module script");
-  return match[1].replace(/^\s*import .*?;\s*$/gm, "");
+  const open = html.indexOf('<script type="module">');
+  const close = html.indexOf("</script>", open);
+  assert.ok(open >= 0 && close > open, "generated HTML must contain a module script");
+  return html.slice(open + '<script type="module">'.length, close)
+    .replace(/^\s*import .*?;\s*$/gm, "");
 }
 
 test("preset 3D module JavaScript is syntactically valid and inline mode is idle", () => {
@@ -24,5 +26,5 @@ test("Poly GLB module JavaScript is syntactically valid and inline mode does not
   assert.doesNotThrow(() => new Script(source));
   assert.match(source, /let spin = !INLINE/);
   assert.match(source, /if \(spin && !INLINE\)/);
-  assert.doesNotMatch(source, /\nframe\(\);/);
+  assert.doesNotMatch(source, /frame\(\);/);
 });
