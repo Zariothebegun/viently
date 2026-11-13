@@ -9,10 +9,11 @@
 
 ## Before editing
 
-1. Read app-ios/package.json and the relevant source files.
-2. Check existing tests in app-ios/tests/.
-3. Keep changes focused and preserve the current feed interaction model.
-4. Never claim a device test or runtime check that was not actually performed.
+1. Read ../02-contexto-do-produto.md first; it defines the product intent and teaching/question policy.
+2. Read app-ios/package.json and the relevant source files.
+3. Check existing tests in app-ios/tests/.
+4. Keep changes focused and preserve the current feed interaction model.
+5. Never claim a device test or runtime check that was not actually performed.
 
 ## Product and rendering rules
 
