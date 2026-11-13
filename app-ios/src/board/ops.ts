@@ -144,6 +144,31 @@ export type Op =
       start_ms?: number;
       duration_ms: number;
     }
+  | {
+      op: "code";
+      lines: string[];
+      focus?: number[];
+      lang?: string;
+      title?: string;
+      at?: Pt;
+      w?: number;
+      h?: number;
+    }
+  | {
+      op: "plot3d";
+      kind: "surface" | "ridgeline";
+      fn?: "gaussian" | "saddle" | "bowl" | "wave" | "ripple";
+      path?: Pt[];
+      marker?: { at: Pt; label?: string };
+      groups?: { label?: string; mean: number; spread: number; skew?: number; color?: Ink }[];
+      title?: string;
+      xlabel?: string;
+      ylabel?: string;
+      zlabel?: string;
+      at?: Pt;
+      w?: number;
+      h?: number;
+    }
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
   | { op: "dot"; at: Pt; label?: string; label_at?: Pt; color?: Ink }
