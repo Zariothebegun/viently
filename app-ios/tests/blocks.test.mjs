@@ -53,6 +53,8 @@ test("new visual operations are sanitized and bounded", () => {
   assert.deepEqual(ops[0].focus, [2, 3]);
   assert.equal(ops[1].fn, "gaussian");
   assert.deepEqual(ops[1].path[0], [1, -1]);
+  const fromString = sanitizeOps([{ op: "code", code: "let x = 1  \\n\\tprint(x)  " }]);
+  assert.deepEqual(fromString[0].lines, ["let x = 1", "    print(x)"]);
 });
 
 test("code and plot blocks have layout bounds and timelines", () => {
