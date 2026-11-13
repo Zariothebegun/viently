@@ -23,7 +23,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v6";
+const CACHE_KEY = "viently.lessons.v7";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -39,9 +39,13 @@ function hash(s: string): string {
 }
 
 async function cacheKey(input: GenerateInput): Promise<string> {
-  const tail = input.history.slice(-2).map((m) => m.content).join("~").slice(-360);
+  // Cache version is bumped when lesson structure/prompt rules change. Include
+  // the learner profile and the same six history turns sent to the model.
+  const tail = input.history.slice(-6)
+    .map((m) => `${m.role}:${String(m.content ?? "").slice(-700)}`)
+    .join("~");
   return hash(
-    `${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${tail}|${input.model ?? ""}`,
+    `lesson-v7|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -325,6 +329,9 @@ export function sanitizeOps(raw: any): Op[] {
         });
         break;
       case "model3d": {
+        // The page overlay supports exactly one 3D model. Reject extras here
+        // instead of silently losing them later in the renderer.
+        if (out.some((item) => item.op === "model3d")) break;
         const base = {
           op: "model3d" as const,
           at: (o.at ? pt(o.at, [22, 2]) : [22, 2]) as [number, number],
@@ -371,6 +378,8 @@ export function sanitizeOps(raw: any): Op[] {
         });
         break;
       case "hotspot": {
+        // Keep the interaction layer sparse and predictable on small screens.
+        if (out.filter((item) => item.op === "hotspot").length >= 4) break;
         const label = String(o.label ?? "").replace(/\s+/g, " ").trim().slice(0, 28);
         const detail = String(o.detail ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
         if (label && detail) {
