@@ -18,9 +18,8 @@ const MODEL_IMG: Record<string, any> = {
 };
 
 /*
-  Preset local (célula, motor, átomo…) desenhado a rodar dentro da página.
-  A cena é a mesma do painel grande, mas em modo "inline": sem a dica de
-  arrastar, etiquetas mais pequenas e fundo transparente. A imagem estática
+  Pré-visualização estática de um preset local (célula, motor, átomo…).
+  O painel grande usa a mesma cena com rotação e controlos. A imagem estática
   cobre o primeiro instante e fica visível se a WebView não conseguir carregar
   o three.js (sem internet).
 */
