@@ -5,19 +5,16 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
-    "backgroundColor": "#070b16",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f9f7ef",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#070b16"
+      "backgroundColor": "#f9f7ef"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "pt.epc.viently",
-      "infoPlist": {
-        "NSMicrophoneUsageDescription": "Para o tutor ouvir as perguntas do aluno por voz."
-      }
+      "bundleIdentifier": "pt.epc.viently" 
     },
     "android": {
       "package": "pt.epc.viently",
