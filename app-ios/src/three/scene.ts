@@ -1291,8 +1291,8 @@ setTimeout(function () {
 
 // Cena para um GLB remoto da Poly Pizza.
 // Duas utilizações:
-//   "inline" — ilustração viva dentro da página (sem toque, roda sozinha)
-//   "modal"  — painel grande, com arrasto e pinça
+//   "inline" — pré-visualização estática e leve dentro da página
+//   "modal"  — painel grande, com rotação, arrasto e pinça
 // As etiquetas são coladas ao modelo: são projectadas a partir da caixa 3D e
 // acompanham a rotação, com uma linha-guia até à peça.
 export type PolyMode = "inline" | "modal";
