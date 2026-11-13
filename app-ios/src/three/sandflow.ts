@@ -31,6 +31,32 @@ export type SandflowModel = {
 type CacheEntry = { q: string; at: number; item: SandflowModel | null };
 type Cache = Record<string, CacheEntry>;
 
+function validCachedModel(value: any): value is SandflowModel {
+  return !!value && typeof value === "object"
+    && typeof value.id === "string" && value.id.length > 0
+    && typeof value.title === "string" && value.title.length > 0
+    && typeof value.glb === "string" && /^https:\\/\\//i.test(value.glb)
+    && typeof value.thumb === "string"
+    && typeof value.author === "string"
+    && typeof value.licence === "string"
+    && typeof value.page === "string" && /^https:\\/\\//i.test(value.page);
+}
+
+export function sanitizeSandflowCache(value: unknown): Cache {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const clean: Cache = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Partial<CacheEntry>;
+    if (typeof entry.q !== "string" || !Number.isFinite(entry.at)) continue;
+    if (entry.item !== null && !validCachedModel(entry.item)) continue;
+    clean[key] = { q: entry.q.slice(0, 80), at: Number(entry.at), item: entry.item ?? null };
+  }
+  return Object.fromEntries(
+    Object.entries(clean).sort((a, b) => b[1].at - a[1].at).slice(0, CACHE_MAX),
+  );
+}
+
 function fold(s: string): string {
   return String(s)
     .toLowerCase()
@@ -67,7 +93,7 @@ async function loadCache(): Promise<Cache> {
   if (cache) return cache;
   try {
     const raw = await AsyncStorage.getItem(CACHE_KEY);
-    cache = raw ? (JSON.parse(raw) as Cache) : {};
+    cache = sanitizeSandflowCache(raw ? JSON.parse(raw) : null);
   } catch {
     cache = {};
   }
@@ -136,8 +162,8 @@ function rank(items: any[], query: string): any | null {
 
 function toModel(it: any): SandflowModel | null {
   const id = String(it.id ?? "");
-  const glb = String(it.preview_glb || `${API.replace("/api", "")}/cdn/${id}.glb`);
-  if (!id || !glb) return null;
+  const glb = String(it.preview_glb || `${API.replace("/api", "")}/cdn/${encodeURIComponent(id)}.glb`);
+  if (!id || !/^https:\\/\\//i.test(glb)) return null;
   const title = String(it.title ?? "modelo 3D").replace(/\s+/g, " ").trim().slice(0, 60);
   const author = typeof it.author === "string" ? it.author : it.author?.name ?? it.user?.name;
   const licence = typeof it.licence === "string"
@@ -149,10 +175,10 @@ function toModel(it: any): SandflowModel | null {
     id,
     title,
     glb,
-    thumb: String(it.thumbnail ?? ""),
+    thumb: /^https:\\/\\//i.test(String(it.thumbnail ?? "")) ? String(it.thumbnail) : "",
     author: String(author ?? "Autor não indicado").slice(0, 80),
     licence: String(licence ?? "Licença não indicada").slice(0, 80),
-    page: String(it.page ?? "https://polyfork.dev"),
+    page: /^https:\\/\\//i.test(String(it.page ?? "")) ? String(it.page) : "https://polyfork.dev",
   };
 }
 
