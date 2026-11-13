@@ -1,47 +1,46 @@
-# 00 — Brief revisto
+# Viently — brief actual
 
-Versão limpa do pedido original (gerado por IA), com decisões tomadas onde o texto era vago, impossível ou caro demais.
+## Produto
 
-## Objetivo
+Viently é uma aplicação educativa mobile-first, construída com Expo e React Native. O aluno escreve uma pergunta e recebe uma sequência de páginas de ensino num feed vertical. Não é um chatbot tradicional, nem um sistema de flashcards.
 
-Um tutor que recebe uma pergunta ("explica-me a divisão celular"), responde por voz e texto **e constrói acompanhamento visual em tempo real** — cartões, gráficos, diagramas, fórmulas, modelo 3D interativo — com o qual o aluno pode interagir e continuar a perguntar.
+Cada página combina, quando isso ajuda a ensinar:
+- texto de explicação com revelação progressiva;
+- diagramas e ilustrações 2D;
+- gráficos, fórmulas e cartões curtos;
+- modelos 3D interactivos provenientes de bibliotecas externas ou presets locais;
+- hotspots para explorar partes de um desenho;
+- uma pergunta de verificação quando acrescenta valor.
 
-Não é um chatbot com CSS bonito. O que se prova no protótipo é o **pipeline de geração estruturada + renderização validada**.
+O modelo devolve dados estruturados. O código valida esses dados e o renderer fixo constrói a interface. O modelo nunca escreve componentes nem executa código.
 
-## O que foi cortado ou corrigido (e porquê)
+## Decisões de produto
 
-| Item do texto original | Decisão | Motivo |
-|---|---|---|
-| iOS / React Native / Expo como base | **Adiado.** Protótipo em web (React + Vite) | Three.js em Expo exige `expo-gl` e trabalho de shaders; debug e hot-reload muito mais lentos. Em web o mesmo código corre no portátil do professor sem App Store nem conta de developer (99 €/ano). Portar para RN depois é trabalho mecânico. |
-| "Modelos 3D gerados pela IA" | **Biblioteca de modelos paramétricos** | Um LLM não gera geometria 3D utilizável. A IA escolhe `assetId` + parâmetros de uma biblioteca curada (célula, átomo, sistema solar, sólidos). É honesto e funciona. |
-| "Animações e simulações interativas" | **Fora da v1** | É o item mais caro e com maior risco. Fica como v2, e mesmo aí só por templates pré-feitos. |
-| "Ilustrações científicas 2D" geradas | **Fora da v1** | Gerar imagens por IA custa dinheiro, é lento e não é interativo. Diagramas SVG paramétricos cobrem o caso pedagógico. |
-| 8 requisitos no primeiro protótipo | **5 no protótipo** | Texto, cartões, gráfico, diagrama 2D, modelo 3D. Quiz entra assim que os 5 estiverem estáveis. |
-| "Voz" como API paga | **Web Speech API** no protótipo | Grátis, sem chave, TTS em `pt-PT` razoável. Trocar por API paga só se a qualidade travar a demo. |
-| "Não executar código arbitrário do modelo" | **Mantido, é central** | O modelo só pode devolver JSON que valida contra um schema Zod. Nada de `eval`, nada de componentes dinâmicos. |
-| "Vários agentes sem coordenação" | **Mantido** | Ver `02-divisao-agentes.md`. |
+- A entrada é por texto. Voz e microfone estão fora do âmbito actual.
+- Não há leitura, captura ou sobreposição do ecrã do utilizador.
+- Não se gera geometria 3D com IA. A aplicação escolhe modelos existentes e usa diagramas 2D quando não há um modelo adequado.
+- Não se força um gráfico, quiz, cartão ou modelo 3D em todas as páginas.
+- O feed é vertical e cada página deve caber no ecrã sem cortar conteúdo essencial.
+- A escrita é revelada progressivamente depois de a resposta estruturada chegar. Isto é uma animação de escrita, não streaming de tokens do servidor.
+- A continuidade deve usar o histórico completo e o perfil de aprendizagem como evidência, sem declarar domínio com base numa única resposta.
 
-## Requisitos do protótipo (v1)
+## Stack actual
 
-1. Receber pergunta por texto ou voz.
-2. Enviar para o modelo via OpenRouter com *structured output*.
-3. Validar a resposta contra o schema; se falhar, uma tentativa de reparação e depois erro visível.
-4. Renderizar texto, cartões, um gráfico e um diagrama 2D.
-5. Renderizar um modelo 3D interativo (rodar, zoom, clicar em hotspot → explicação).
-6. Manter conversa de seguida: "e porque é que a membrana desaparece?" usa o contexto da aula.
+- Expo SDK 58, React 19, React Native 0.88 e TypeScript.
+- Uma aplicação principal em app-ios/App.tsx; não usar Expo Router sem uma decisão explícita de arquitectura.
+- SVG para diagramas 2D e WebView/Three.js para os modelos 3D.
+- OpenRouter para geração estruturada; chave BYOK guardada no dispositivo.
+- AsyncStorage para cache e progresso local.
+- Testes Node integrados com tsx, executados por npm test.
+- GitHub Actions valida TypeScript, testes, alinhamento Expo e exportação Metro para iOS.
 
-## Critério de sucesso da PAP
+## Regras de implementação
 
-Uma pessoa que nunca viu o projeto pergunta algo, e em menos de 30 s vê a explicação a construir-se no ecrã com pelo menos um elemento visual interativo, e consegue fazer uma pergunta de seguimento coerente.
-
-## Não-objetivos (dizer isto na apresentação)
-
-- Não é uma app de iOS na v1.
-- Não gera 3D nem imagens por IA.
-- Não tem contas, turmas, notas nem backend multi-utilizador.
-
-## Referência futura: agent-simulator
-- https://github.com/jasonkneen/agent-simulator — simulador iOS no browser, inspecionável: stream MJPEG, árvore de acessibilidade, árvore de componentes React com código-fonte real, tap/swipe/type sem mexer no cursor.
-- Bridge MCP (15 tools: sim_tree, sim_tap_by_label, sim_swipe, sim_type, sim_screenshot, …) para agentes conduzirem a app.
-- Requisitos: macOS com Xcode + simulador iOS, Node ≥ 18, toolchain Rust (build único do sim-server) e `axe`.
-- Utilização planeada: quando formos fazer/testar o app Viently, integrar o plugin metro do agent-simulator na app para inspecionar e conduzir o feed, quiz e 3D a partir do browser/MCP.
+1. Preservar texto, listas, fórmulas e quebras de linha na paginação.
+2. Usar o mesmo renderer para texto em animação, página concluída e pré-visualização.
+3. Validar e limitar operações visuais antes de as renderizar.
+4. Não aceitar modelos 3D duplicados nem hotspots ilimitados.
+5. A cache tem de incluir profundidade, perfil de aprendizagem e histórico relevante.
+6. Não inventar autores ou licenças de modelos externos. Se os metadados não existirem, indicar que não estão disponíveis.
+7. Evitar ciclos de animação activos quando o modelo 3D está parado ou fora de vista.
+8. Não declarar a aplicação pronta para produção sem testes num iPhone real, incluindo rotação, teclado, WebViews, memória e comportamento térmico.
