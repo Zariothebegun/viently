@@ -149,6 +149,24 @@ export function specsOf(op: Op): Spec[] {
       const h = o.h ?? 18;
       return [stroke(2 * (w + h)), stroke(26), text(o.title), text("toca para abrir")];
     }
+    case "code": {
+      const lines: string[] = Array.isArray(o.lines) ? o.lines : [];
+      const chars = lines.reduce((n, l) => n + String(l).length, 0);
+      const out: Spec[] = [stroke(40), { kind: "text", chars }];
+      (Array.isArray(o.focus) ? o.focus : []).slice(0, 8).forEach(() => out.push(text("x".repeat(18))));
+      return out;
+    }
+    case "plot3d": {
+      if (o.kind === "ridgeline") {
+        const n = Array.isArray(o.groups) ? o.groups.length : 0;
+        const out: Spec[] = [stroke(30)];
+        for (let i = 0; i < n; i++) out.push(stroke(46));
+        out.push(text([o.xlabel, o.title].filter(Boolean).join("")));
+        return out;
+      }
+      const hasPath = Array.isArray(o.path) && o.path.length >= 2;
+      return [stroke(110), hasPath ? stroke(48) : text(null), text([o.xlabel, o.ylabel, o.zlabel].filter(Boolean).join(""))];
+    }
     case "underline":
     case "highlight":
       return [stroke(o.w ?? 20)];
