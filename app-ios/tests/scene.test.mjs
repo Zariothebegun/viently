@@ -18,6 +18,7 @@ test("preset 3D module JavaScript is syntactically valid and inline mode is idle
   assert.match(source, /let spin = !INLINE/);
   assert.match(source, /function wake\(\)/);
   assert.match(source, /if \(frames === 1\)/);
+  assert.equal((html.match(/type: "ready"/g) ?? []).length, 1, "readiness must only be reported by the rendered scene");
 });
 
 test("Poly GLB module JavaScript is syntactically valid and inline mode does not spin", () => {
