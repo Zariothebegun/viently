@@ -48,7 +48,7 @@ export function opBBox(op: any): Box | null {
   if (k === "code") {
     const [x, y] = (op.at ?? [3, 4]) as Pt;
     const n = Array.isArray(op.lines) ? op.lines.length : 8;
-    return [x, y, x + (op.w ?? 94), y + (op.h ?? 7.8 + n * 3.9)];
+    return [x, y, x + (op.w ?? 94), y + (op.h ?? 7.8 + n * 3.8)];
   }
   if (k === "plot3d") {
     const [x, y] = (op.at ?? [10, 10]) as Pt;
@@ -344,7 +344,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       op.at = [x, y];
       const defaultW = kind === "model3d" ? 54 : kind === "code" ? 94 : kind === "plot3d" ? 70 : 20;
       const defaultH = kind === "model3d" ? 38
-        : kind === "code" ? 7.8 + (Array.isArray(op.lines) ? op.lines.length : 8) * 3.9
+        : kind === "code" ? 7.8 + (Array.isArray(op.lines) ? op.lines.length : 8) * 3.8
         : kind === "plot3d" ? 44 : 10;
       op.w = Math.max(1, Math.min(Number(op.w ?? defaultW) || defaultW, 98 - x));
       op.h = Math.max(1, Math.min(Number(op.h ?? defaultH) || defaultH, 73 - y));
