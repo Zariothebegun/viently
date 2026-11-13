@@ -8,6 +8,7 @@ Tutor educativo mobile-first que explica e desenha através de páginas interact
 - app/: protótipo web antigo, apenas referência.
 - _stage/ e _ref/: código histórico de referência; não fazem parte da app activa.
 - 00-brief-revisto.md: âmbito actual do produto.
+- 02-contexto-do-produto.md: contexto canónico da experiência, pedagogia e política de perguntas para agentes.
 - 01-arquitetura.md: fluxo e stack actuais.
 - app-ios/AGENTS.md: regras de desenvolvimento para agentes.
 
