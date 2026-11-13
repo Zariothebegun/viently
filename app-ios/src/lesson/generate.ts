@@ -235,23 +235,23 @@ export function sanitizeOps(raw: any): Op[] {
         break;
       }
       case "code": {
-        const lines = Array.isArray(o.lines) ? o.lines.slice(0, 16).map((v: any) => String(v ?? "").replace(/\\t/g, "    ").replace(/\\s+$/, "").slice(0, 64)) : typeof o.code === "string" ? String(o.code).replace(/\\r/g, "").split("\\n").slice(0, 16).map((v) => v.replace(/\\t/g, "    ").replace(/\\s+$/, "").slice(0, 64)) : [];
+        const lines = Array.isArray(o.lines) ? o.lines.slice(0, 16).map((v: any) => String(v ?? "").replace(/\t/g, "    ").replace(/\\s+$/, "").slice(0, 64)) : typeof o.code === "string" ? String(o.code).replace(/\r/g, "").split("\n").slice(0, 16).map((v) => v.replace(/\t/g, "    ").replace(/\\s+$/, "").slice(0, 64)) : [];
         while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
         if (!lines.length) break;
         const focus = Array.isArray(o.focus) ? Array.from(new Set(o.focus.map((v: any) => Math.round(num(v, 0))).filter((v: number) => v >= 1 && v <= lines.length))).slice(0, 8) as number[] : undefined;
-        out.push({ op: "code", lines, focus: focus?.length ? focus : undefined, lang: o.lang ? String(o.lang).replace(/[^\\w+#.-]/g, "").slice(0, 12) : undefined, title: o.title ? String(o.title).replace(/\\s+/g, " ").trim().slice(0, 28) : undefined, at: o.at ? pt(o.at, [3, 4]) : undefined, w: o.w != null ? Math.max(30, Math.min(96, num(o.w, 94))) : undefined, h: o.h != null ? Math.max(12, Math.min(70, num(o.h, 40))) : undefined });
+        out.push({ op: "code", lines, focus: focus?.length ? focus : undefined, lang: o.lang ? String(o.lang).replace(/[^\w+#.-]/g, "").slice(0, 12) : undefined, title: o.title ? String(o.title).replace(/\s+/g, " ").trim().slice(0, 28) : undefined, at: o.at ? pt(o.at, [3, 4]) : undefined, w: o.w != null ? Math.max(30, Math.min(96, num(o.w, 94))) : undefined, h: o.h != null ? Math.max(12, Math.min(70, num(o.h, 40))) : undefined });
         break;
       }
       case "plot3d": {
         const kindName = o.kind === "ridgeline" ? "ridgeline" : "surface";
-        const base = { op: "plot3d" as const, kind: kindName as "surface" | "ridgeline", title: o.title ? String(o.title).replace(/\\s+/g, " ").trim().slice(0, 40) : undefined, xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined, ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined, zlabel: o.zlabel ? String(o.zlabel).slice(0, 16) : undefined, at: o.at ? pt(o.at, [10, 10]) : undefined, w: o.w != null ? Math.max(24, Math.min(96, num(o.w, 70))) : undefined, h: o.h != null ? Math.max(18, Math.min(70, num(o.h, 44))) : undefined };
+        const base = { op: "plot3d" as const, kind: kindName as "surface" | "ridgeline", title: o.title ? String(o.title).replace(/\s+/g, " ").trim().slice(0, 40) : undefined, xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined, ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined, zlabel: o.zlabel ? String(o.zlabel).slice(0, 16) : undefined, at: o.at ? pt(o.at, [10, 10]) : undefined, w: o.w != null ? Math.max(24, Math.min(96, num(o.w, 70))) : undefined, h: o.h != null ? Math.max(18, Math.min(70, num(o.h, 44))) : undefined };
         if (kindName === "surface") {
           const fn = SURFACE_FNS.includes(o.fn) ? o.fn : "gaussian";
           const clamp1 = (p: [number, number]): [number, number] => [Math.max(-1, Math.min(1, p[0])), Math.max(-1, Math.min(1, p[1]))];
           const path = pts(o.path, 24).map(clamp1);
           out.push({ ...base, fn, path: path.length >= 2 ? path : undefined, marker: o.marker && typeof o.marker === "object" ? { at: clamp1(pt(o.marker.at, [0, 0])), label: o.marker.label ? String(o.marker.label).slice(0, 24) : undefined } : undefined });
         } else {
-          const groups = Array.isArray(o.groups) ? o.groups.slice(0, 6).map((g: any) => ({ label: g?.label ? String(g.label).replace(/\\s+/g, " ").trim().slice(0, 18) : undefined, mean: num(g?.mean, 0), spread: Math.max(1e-6, Math.abs(num(g?.spread, 1))), skew: g?.skew != null ? Math.max(-8, Math.min(8, num(g.skew, 0))) : undefined, color: g?.color != null ? safeColor(g.color, "blue") : undefined })).filter((g: any) => Number.isFinite(g.mean) && Number.isFinite(g.spread)) : [];
+          const groups = Array.isArray(o.groups) ? o.groups.slice(0, 6).map((g: any) => ({ label: g?.label ? String(g.label).replace(/\s+/g, " ").trim().slice(0, 18) : undefined, mean: num(g?.mean, 0), spread: Math.max(1e-6, Math.abs(num(g?.spread, 1))), skew: g?.skew != null ? Math.max(-8, Math.min(8, num(g.skew, 0))) : undefined, color: g?.color != null ? safeColor(g.color, "blue") : undefined })).filter((g: any) => Number.isFinite(g.mean) && Number.isFinite(g.spread)) : [];
           if (groups.length >= 2) out.push({ ...base, groups });
         }
         break;
