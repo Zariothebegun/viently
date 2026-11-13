@@ -503,10 +503,16 @@ export default function App() {
     return new Promise<void>((resolve) => {
       cancelRef.current = false;
       const t0 = Date.now();
+      let lastRender = -34;
       const loop = () => {
         if (cancelRef.current) return resolve();
         const el = Date.now() - t0;
-        setTick(el);
+        // The animation clock still follows requestAnimationFrame, but React
+        // only rerenders at ~30 fps instead of forcing a full tree render at 60 fps.
+        if (el - lastRender >= 33 || el >= totalMs) {
+          lastRender = el;
+          setTick(el);
+        }
         if (el >= totalMs) return resolve();
         rafRef.current = requestAnimationFrame(loop);
       };
@@ -865,12 +871,10 @@ export default function App() {
 
   function continueQuestion(lesson: Lesson, root: string, depth: number): string {
     const last = lesson.steps
-      .slice(-2)
-      .map((s) => writeOf(s))
+      .map((s) => String(s.write || s.say || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
       .join(" ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(-300);
+      .slice(-900);
     return `Continua a aula sobre "${root}" (parte ${depth + 2}). Já ficou explicado: ${last}. Não repitas o que já foi dito: avança para o próximo conceito essencial, com um exemplo novo e um pormenor que só se compreende depois disto.`;
   }
 
@@ -922,7 +926,7 @@ export default function App() {
       const history: Msg[] = [
         ...p.history,
         { role: "user", content: p.question },
-        { role: "assistant", content: lesson.steps.map((s) => s.say).join(" ") },
+        { role: "assistant", content: lesson.steps.map((s) => s.write || s.say).join("\n\n") },
       ];
       const steps = makeStepPages(lesson, { history, root, depth: p.depth });
       const nextLoad = makeLoadPage({
@@ -1058,7 +1062,9 @@ export default function App() {
     patchPage(page.id, { answered: index, history });
     // Regista evidência persistente por tema; a próxima explicação pode
     // ajustar a profundidade sem assumir domínio com base numa única resposta.
-    masteryWriteRef.current = masteryWriteRef.current.then(() => recordMasteryAttempt(page.root, index === page.check!.answer_index));
+    masteryWriteRef.current = masteryWriteRef.current
+      .catch(() => undefined)
+      .then(() => recordMasteryAttempt(page.root, index === page.check!.answer_index));
   }
 
   function ask(text: string, continueCurrent = false) {
@@ -1105,7 +1111,7 @@ export default function App() {
     const cur = ps[activeRef.current] ?? ps[0] ?? HERO;
     const root = seedLesson.title ?? "Mitose";
     const history: Msg[] = [
-      { role: "assistant", content: seedLesson.steps.map((s) => s.say).join(" ") },
+      { role: "assistant", content: seedLesson.steps.map((s) => s.write || s.say).join("\n\n") },
     ];
     const steps = makeStepPages(seedLesson, { history, root, depth: 0 });
     const nextLoad = makeLoadPage({
