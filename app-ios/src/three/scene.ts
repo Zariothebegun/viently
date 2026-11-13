@@ -49,8 +49,8 @@ function mat(color, o) {
 // ---------------- cena ----------------
 const host = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, INLINE ? 1 : 1.5));
+renderer.shadowMap.enabled = !INLINE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.02;
@@ -64,7 +64,7 @@ scene.add(new THREE.HemisphereLight(0xfffdf2, 0x8d939d, 0.9));
 
 const key = new THREE.DirectionalLight(0xfff7ea, 2.0);
 key.position.set(2.6, 3.6, 2.4);
-key.castShadow = true;
+key.castShadow = !INLINE;
 key.shadow.mapSize.set(1024, 1024);
 key.shadow.camera.left = -3.2;
 key.shadow.camera.right = 3.2;
@@ -90,7 +90,7 @@ const floor = new THREE.Mesh(
 );
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -1.42;
-floor.receiveShadow = true;
+floor.receiveShadow = !INLINE;
 scene.add(floor);
 
 const assembly = new THREE.Group();
@@ -715,7 +715,7 @@ for (let i = 0; i < parts.length; i++) {
 let explodeT = 0;
 let explodeTarget = 0;
 let xray = false;
-let spin = true;
+let spin = !INLINE;
 let selected = null;
 
 function applyExplode(t) {
@@ -754,6 +754,8 @@ function select(part) {
     });
   }
   post(part ? { type: "pick", name: part.userData.name, note: part.userData.note } : { type: "pick", name: "", note: "" });
+  dirty = true;
+  wake();
 }
 
 // ---------------- câmara ----------------
@@ -772,6 +774,7 @@ function resize() {
   camera.updateProjectionMatrix();
   needFit = true;
   dirty = true;
+    wake();
 }
 
 const target = new THREE.Vector3(0, 0, 0);
@@ -866,7 +869,12 @@ function buildLabels() {
 }
 
 let dirty = true;
+    wake();
 let needFit = true;
+let frameHandle = 0;
+function wake() {
+  if (!frameHandle) frameHandle = requestAnimationFrame(loop);
+}
 const v = new THREE.Vector3();
 
 function measure() {
@@ -1036,12 +1044,14 @@ host.addEventListener("pointermove", function (e) {
     az -= dx * 0.0085;
     pol = Math.max(0.32, Math.min(2.86, pol - dy * 0.0062));
     dirty = true;
+    wake();
   } else if (pointers.size === 2) {
     const it = Array.from(pointers.values());
     const d = Math.hypot(it[0].x - it[1].x, it[0].y - it[1].y);
     if (pinch) zoom = Math.max(0.55, Math.min(2.6, zoom * (pinch / Math.max(1, d))));
     pinch = d;
     dirty = true;
+    wake();
   }
 });
 
@@ -1063,6 +1073,7 @@ host.addEventListener("wheel", function (e) {
   e.preventDefault();
   zoom = Math.max(0.55, Math.min(2.6, zoom * (1 + e.deltaY * 0.0012)));
   dirty = true;
+    wake();
 }, { passive: false });
 
 // ---------------- ciclo ----------------
@@ -1075,7 +1086,7 @@ function post(obj) {
 
 let frames = 0;
 function loop() {
-  requestAnimationFrame(loop);
+  frameHandle = 0;
   const dt = Math.min(0.05, clock.getDelta());
 
   if (explodeTarget !== explodeT) {
@@ -1084,10 +1095,12 @@ function loop() {
     applyExplode(explodeT);
     needFit = true;
     dirty = true;
+    wake();
   }
   if (spin && !dragging) {
     az += dt * 0.16;
     dirty = true;
+    wake();
   }
 
   // reenquadra sempre que a explosão muda, para nada sair do ecrã
@@ -1095,6 +1108,7 @@ function loop() {
     fitCamera();
     needFit = false;
     dirty = true;
+    wake();
   }
   // Quando a rotação está parada, só redesenha depois de uma alteração.
   // Evita renderizar a mesma imagem 60 vezes por segundo no painel 3D.
@@ -1111,24 +1125,28 @@ function loop() {
     dirty = false;
   }
   frames++;
-  if (frames === 3) post({ type: "ready" });
+  if (frames === 1) post({ type: "ready" });
+  if (spin || Math.abs(explodeTarget - explodeT) > 0.002) wake();
 }
-requestAnimationFrame(loop);
+wake();
 
 // ---------------- api ----------------
 window.__setExplode = function (t) {
   explodeTarget = clamp01(Number(t) || 0);
   spin = false;
   dirty = true;
+    wake();
 };
 window.__setXray = function (on) {
   xray = !!on;
   applyExplode(explodeT);
   dirty = true;
+    wake();
 };
 window.__setSpin = function (on) {
   spin = !!on;
   dirty = true;
+    wake();
 };
 window.__reset = function () {
   az = CONF_THIS.az != null ? CONF_THIS.az : 0.62;
@@ -1136,6 +1154,7 @@ window.__reset = function () {
   zoom = 1; dist = fitDist;
   select(null);
   dirty = true;
+    wake();
 };
 
 let rt = null;
@@ -1172,6 +1191,7 @@ if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(function () {
     measure();
     dirty = true;
+    wake();
   });
 }
 `;
