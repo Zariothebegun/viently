@@ -1385,7 +1385,7 @@ const clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
 
 const stage = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, INLINE ? 1 : 1.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.02;
@@ -1406,8 +1406,12 @@ rim.position.set(0, -3, -6);
 scene.add(rim);
 
 let az = 0.72, pol = 1.18, zoom = 1, fitDist = 5, radius = 0;
-let spin = true, dirty = true, dragging = false, needLayout = true;
+let spin = !INLINE, dirty = true, dragging = false, needLayout = true;
 let holder = null, boxLocal = null;
+let frameHandle = 0;
+function wake() {
+  if (!frameHandle) frameHandle = requestAnimationFrame(frame);
+}
 const look = new THREE.Vector3(0, 0, 0);
 
 // ---- etiquetas coladas ao modelo ----
@@ -1600,6 +1604,7 @@ function place() {
   camera.position.set(d * sp * Math.sin(az), d * cp, d * sp * Math.cos(az));
   camera.lookAt(look);
   dirty = true;
+  wake();
 }
 
 function fit() {
@@ -1619,7 +1624,7 @@ function resize() {
   place();
 }
 
-window.__setSpin = function (on) { spin = !!on; };
+window.__setSpin = function (on) { spin = !!on; wake(); };
 window.__setExplode = function () { /* modelo remoto não tem partes */ };
 window.__setXray = function () { /* nem raios X */ };
 window.__reset = function () {
@@ -1766,10 +1771,10 @@ window.addEventListener("resize", function () {
 
 let last = 0;
 function frame(t) {
-  requestAnimationFrame(frame);
-  if (t - last < 33) return;
-  const dt = Math.min(0.1, (t - last) / 1000);
-  last = t;
+  frameHandle = 0;
+  const now = Number.isFinite(t) ? t : 0;
+  const dt = last ? Math.min(0.1, Math.max(0, (now - last) / 1000)) : 0;
+  last = now;
   if (holder && spin && !dragging) {
     holder.rotation.y += SPIN_SPEED * dt;
     dirty = true;
@@ -1783,11 +1788,18 @@ function frame(t) {
     layoutLabels();
     needLayout = false;
   }
+  // Inline previews stay still. The full-screen model rotates at ~30 fps.
+  if (spin && !INLINE) {
+    frameHandle = window.setTimeout(function () {
+      frameHandle = 0;
+      wake();
+    }, 33);
+  }
 }
 
 resize();
 place();
-frame();
+wake();
 </script>
 <script>
   // se o CDN ou o GLB não responderem, o painel mostra o erro em vez de ficar
