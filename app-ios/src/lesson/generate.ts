@@ -625,7 +625,7 @@ const LESSON_SCHEMA = {
     },
     board: {
       type: "array",
-      minItems: 4,
+      minItems: 1,
       maxItems: 10,
       items: { type: "object" },
     },
