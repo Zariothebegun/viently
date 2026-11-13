@@ -872,7 +872,11 @@ let dirty = true;
 let needFit = true;
 let frameHandle = 0;
 function wake() {
-  if (!frameHandle) frameHandle = requestAnimationFrame(loop);
+  if (!frameHandle) {
+    frameHandle = window.setTimeout(function () {
+      frameHandle = requestAnimationFrame(loop);
+    }, 33);
+  }
 }
 const v = new THREE.Vector3();
 
