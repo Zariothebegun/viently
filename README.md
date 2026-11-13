@@ -6,6 +6,7 @@ Tutor educativo mobile-first que explica e desenha através de páginas interact
 
 - app-ios/: produto activo, Expo / React Native.
 - app/: protótipo web antigo, apenas referência.
+- _stage/ e _ref/: código histórico de referência; não fazem parte da app activa.
 - 00-brief-revisto.md: âmbito actual do produto.
 - 01-arquitetura.md: fluxo e stack actuais.
 - app-ios/AGENTS.md: regras de desenvolvimento para agentes.
