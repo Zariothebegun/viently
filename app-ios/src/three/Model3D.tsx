@@ -39,6 +39,12 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
   const [pick, setPick] = useState<{ name: string; note: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (ready || err) return;
+    const timeout = setTimeout(() => setErr("o modelo demorou demasiado tempo a carregar"), 12000);
+    return () => clearTimeout(timeout);
+  }, [ready, err]);
+
   const send = (js: string) => ref.current?.injectJavaScript(`${js};true;`);
 
   useEffect(() => {
@@ -75,7 +81,14 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
       <View style={s.stage}>
         <WV
           ref={ref}
-          source={{ html, baseUrl: "https://sandflow-sand3d-explorer.hf.space/" }}
+          source={{
+            html,
+            // O GLB vem do catálogo remoto, não do antigo host Sandflow.
+            // Usar a origem real evita resolver recursos relativos no domínio morto.
+            baseUrl: isPoly
+              ? target.model.glb.split("/").slice(0, 3).join("/") + "/"
+              : "https://cdn.jsdelivr.net/",
+          }}
           originWhitelist={["*"]}
           style={s.web}
           containerStyle={s.webWrap}
@@ -121,7 +134,7 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
               {target.model.author} · {target.model.licence}
             </Text>
             <Pressable onPress={() => Linking.openURL(target.model.page)} hitSlop={10}>
-              <Text style={s.creditLink}>sandflow.ai ↗</Text>
+              <Text style={s.creditLink}>ver modelo ↗</Text>
             </Pressable>
           </View>
         ) : (

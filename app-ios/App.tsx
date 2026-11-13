@@ -1,3 +1,4 @@
+import { Caveat_700Bold } from "@expo-google-fonts/caveat";
 import {
   GochiHand_400Regular,
   useFonts,
@@ -9,7 +10,6 @@ import {
   Quicksand_700Bold,
 } from "@expo-google-fonts/quicksand";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Speech from "expo-speech";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,7 +19,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   PanResponder,
-  ScrollView,
   Platform,
   Pressable,
   SafeAreaView,
@@ -31,23 +30,27 @@ import {
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
 import { Board } from "./src/board/Board";
-import { applyOps, opBBox } from "./src/board/layout";
+import { totalSeconds } from "./src/board/timeline";
+import { applyOpsDetailed, opBBox } from "./src/board/layout";
 import type { Check, Item, Lesson, Op, Step } from "./src/board/ops";
 import { generateLesson, DEFAULT_MODEL } from "./src/lesson/generate";
+import { recordCheckAnswer } from "./src/lesson/feedback";
+import { paginateLessonText } from "./src/lesson/pagination";
+import { getMasteryProfile, recordMasteryAttempt } from "./src/lesson/mastery";
 import { defaultKey, loadKey, looksLikeKey, saveKey } from "./src/lesson/key";
 import { seedLesson } from "./src/lesson/seed";
 import { Model3D } from "./src/three/Model3D";
 import { LiveModel, type ModelOp, type ModelOpen } from "./src/three/LiveModel";
 import { MODELS } from "./src/three/scene";
 
-const INK = "#3b413d";
-const BODY = "#4b514d";
-const MUTED = "#8a9089";
-const MINT = "#4f7b5c";
-const HAIR = "rgba(63,71,64,0.10)";
+const INK = "#26334b";
+const BODY = "#46536a";
+const MUTED = "#858fa1";
+const MINT = "#5878bd";
+const HAIR = "rgba(47,62,88,0.12)";
 const HAND = "GochiHand_400Regular";
 const QUICK = "Quicksand_400Regular";
-const HEAD_H = 88;
+const HEAD_H = 116;
 const TITLE_MS_PER_CHAR = 12;
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -86,6 +89,8 @@ type StepPage = BasePage & {
   mistake?: { wrong: string; right: string };
   check?: Check;
   answered?: number;
+  quizOnly?: boolean;
+  layoutWarning?: boolean;
 };
 
 type Page = HeroPage | StepPage | LoadPage;
@@ -129,22 +134,6 @@ function topicFrom(question: string): string {
   return t.length > 42 ? `${t.slice(0, 40).trimEnd()}…` : t;
 }
 
-function writeOf(step: Step): string {
-  const w = (step.write ?? "")
-    .replace(/\r/g, "")
-    .split("\n")
-    .map((l) => l.replace(/[ \t]+/g, " ").trim())
-    .filter(Boolean)
-    .join("\n")
-    .slice(0, 1400);
-  if (w) return w;
-  const s = (step.say ?? "")
-    .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return s.slice(0, 220);
-}
-
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
@@ -159,8 +148,10 @@ function geometry(w: number, h: number, hasQuiz: boolean): Geom {
   const bw = Math.min(w - 32, 440);
   // a página é uma só: o quadro pode ocupar mais altura do que quando havia
   // vários passos, sem empurrar a pergunta para fora do ecrã
-  const ratio = hasQuiz ? 0.9 : 0.98;
-  const bh = Math.round(Math.min(bw * ratio, h * 0.38));
+  const ratio = hasQuiz ? 0.82 : 0.9;
+  // O quadro ocupa uma faixa previsível do ecrã; o resto fica para ensinar,
+  // sem scroll interno nem conteúdo escondido por baixo do composer.
+  const bh = Math.round(Math.min(bw * ratio, h * 0.31));
   const boardX = Math.round((w - bw) / 2);
   const boardY = 6 + HEAD_H;
   return { w, h, bw, bh, boardX, boardY };
@@ -227,14 +218,14 @@ function NoteText({ text }: { text: string }) {
 }
 
 // números-chave, exemplo, erro comum e resumo: o que faz a página ensinar
-function PageCards({ page }: { page: StepPage }) {
+function PageCards({ page, compact = false }: { page: StepPage; compact?: boolean }) {
   const hasAny = !!page.recap || !!page.example || !!page.mistake || !!page.numbers?.length;
   if (!hasAny) return null;
   return (
     <View style={s.cards}>
       {!!page.numbers?.length && (
         <View style={s.nums}>
-          {page.numbers.map((n, i) => (
+          {page.numbers.slice(0, compact ? 1 : 2).map((n, i) => (
             <View key={i} style={s.numPill}>
               <Text style={s.numLabel}>{n.label}</Text>
               <Text style={s.numValue}>{n.value}</Text>
@@ -245,20 +236,29 @@ function PageCards({ page }: { page: StepPage }) {
       {!!page.example && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Exemplo. </Text>
-          {page.example}
+          {page.example.slice(0, compact ? 90 : 120)}
         </Text>
       )}
-      {!!page.mistake && (
+      {!compact && !!page.mistake && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Erro comum. </Text>
-          {page.mistake.wrong} <Text style={s.cardKey}>Certo: </Text>
-          {page.mistake.right}
+          {page.mistake.wrong.slice(0, 55)} <Text style={s.cardKey}>Certo: </Text>
+          {page.mistake.right.slice(0, 55)}
         </Text>
       )}
-      {!!page.recap && (
+      {!!page.mistake && (compact ? !page.example : true) && (
+        <Text style={s.cardLine}>
+          <Text style={s.cardKey}>Atenção. </Text>
+          {page.mistake.wrong.slice(0, 60)} <Text style={s.cardKey}>Certo: </Text>
+          {page.mistake.right.slice(0, 60)}
+        </Text>
+      )}
+      {!!page.recap && (compact
+        ? !page.example && !page.mistake
+        : !page.mistake) && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
-          {page.recap.lines.map((l, i) => (
+          {page.recap.lines.slice(0, 1).map((l, i) => (
             <Text key={i} style={s.recapLine}>
               • {l}
             </Text>
@@ -276,7 +276,7 @@ function SuggestionPill({ text, onPress }: { text: string; onPress: () => void }
       style={({ pressed }) => [s.pill, pressed && { transform: [{ scale: 0.985 }] }]}
     >
       <LinearGradient
-        colors={["#eefaf1", "#e2f5e9", "#cfeedd"]}
+        colors={["#f5f7fd", "#e8eefb", "#d9e3f7"]}
         locations={[0, 0.5, 1]}
         start={{ x: 0.2, y: 0 }}
         end={{ x: 0.6, y: 1 }}
@@ -325,7 +325,7 @@ function HandHeading({
         {animate ? title.slice(0, n) : title}
       </Text>
       {!!subtitle && (
-        <Text style={[s.sub, !done && { opacity: 0 }]} numberOfLines={4}>
+        <Text style={[s.sub, !done && { opacity: 0 }]} numberOfLines={2}>
           {subtitle}
         </Text>
       )}
@@ -337,7 +337,7 @@ const PagePaper = memo(function PagePaper() {
   return (
     <>
       <LinearGradient
-        colors={["#faf8f1", "#f6f3e9", "#efecdf"]}
+        colors={["#faf8f1", "#faf9f6", "#f0f1f5"]}
         locations={[0, 0.55, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -364,29 +364,34 @@ const StaticStep = memo(
             {page.title}
           </Text>
           {!!page.subtitle && (
-            <Text style={s.sub} numberOfLines={4}>
+            <Text style={s.sub} numberOfLines={2}>
               {page.subtitle}
             </Text>
           )}
         </View>
-        <View style={{ width: g.bw, height: g.bh, alignSelf: "center" }}>
-          <Board
-            ops={boardOps(page)}
-            fracOf={() => 1}
-            width={g.bw}
-            height={g.bh}
-            paper={false}
-          />
-        </View>
-        <View style={s.lineBox}>
-          {!!page.line && (
-            <Text style={s.lineText} numberOfLines={12}>
-              <Text style={s.lineNum}>› </Text>
-              {page.line}
-            </Text>
-          )}
-          <PageCards page={page} />
-        </View>
+        {page.quizOnly ? (
+          <View style={[s.quiz, { marginTop: 18 }]}>
+            <Text style={s.quizKicker}>pergunta de revisão</Text>
+            <Text style={s.quizPrompt}>{page.check?.prompt}</Text>
+          </View>
+        ) : (
+          <>
+            <View style={{ width: g.bw, height: g.bh, alignSelf: "center" }}>
+              <Board
+                ops={boardOps(page)}
+                fracOf={() => 1}
+                width={g.bw}
+                height={g.bh}
+                paper={false}
+              />
+            </View>
+            {page.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
+            <View style={s.lineBox}>
+              {!!page.line && <NoteText text={page.line} />}
+              <PageCards page={page} compact />
+            </View>
+          </>
+        )}
       </View>
     );
   },
@@ -397,6 +402,7 @@ const StaticStep = memo(
 
 export default function App() {
   const [fontsLoaded] = useFonts({
+    Caveat_700Bold,
     GochiHand_400Regular,
     Quicksand_400Regular,
     Quicksand_500Medium,
@@ -414,9 +420,11 @@ export default function App() {
   const [key, setKey] = useState<string | null>(() => defaultKey());
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  const [keyError, setKeyError] = useState<string | null>(null);
   const [askedOnce, setAskedOnce] = useState(false);
   const [modelOpen, setModelOpen] = useState<ModelOpen | null>(null);
-  const [voice, setVoice] = useState(true);
+  const [activeHotspot, setActiveHotspot] = useState<string | null>(null);
+  const masteryWriteRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const pagesRef = useRef<Page[]>(pages);
   const activeRef = useRef(0);
@@ -429,13 +437,8 @@ export default function App() {
   const pagingRef = useRef(false);
   // a página pode ser mais alta do que o ecrã: rola-se dentro dela e só se
   // passa à seguinte quando o texto chega ao fim
-  const pageScroll = useRef<any>(null);
-  const scrollY = useRef(0);
-  const scrollMax = useRef(0);
   const loadingRef = useRef<Set<string>>(new Set());
   const cursorTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const voiceRef = useRef(voice);
-  voiceRef.current = voice;
 
   const dragY = useRef(new Animated.Value(0)).current;
   const blue = useRef(new Animated.ValueXY({ x: 100, y: 30 })).current;
@@ -468,7 +471,6 @@ export default function App() {
     loadKey().then(setKey);
     return () => {
       cancelRef.current = true;
-      Speech.stop();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       cursorTimers.current.forEach(clearTimeout);
     };
@@ -477,12 +479,6 @@ export default function App() {
   // -------------------------------------------------------------------------
   // voz
 
-  function speakStep(text: string) {
-    if (!voiceRef.current || Platform.OS === "web" || !text) return;
-    Speech.stop();
-    Speech.speak(text, { language: "pt-PT", rate: 0.96, pitch: 1.0 });
-  }
-
   // -------------------------------------------------------------------------
   // animação do desenho
 
@@ -490,10 +486,16 @@ export default function App() {
     return new Promise<void>((resolve) => {
       cancelRef.current = false;
       const t0 = Date.now();
+      let lastRender = -34;
       const loop = () => {
         if (cancelRef.current) return resolve();
         const el = Date.now() - t0;
-        setTick(el);
+        // The animation clock still follows requestAnimationFrame, but React
+        // only rerenders at ~30 fps instead of forcing a full tree render at 60 fps.
+        if (el - lastRender >= 33 || el >= totalMs) {
+          lastRender = el;
+          setTick(el);
+        }
         if (el >= totalMs) return resolve();
         rafRef.current = requestAnimationFrame(loop);
       };
@@ -504,6 +506,15 @@ export default function App() {
   function fastDur(item: Item): number {
     // as durações do caderno (timeline.ts) são de leitura calma; aqui o
     // desenho é comprimido para caber em menos de um segundo por passo
+    if (item.op.op === "motion") {
+      return Math.max(250, Math.min(5000, Number(item.op.duration_ms) || 1500));
+    }
+    if (item.op.op === "scene") {
+      return Math.max(250, Math.min(10000, Number(item.op.duration_ms) || 900));
+    }
+    if (item.op.op === "code" || item.op.op === "plot3d") {
+      return Math.round(Math.max(1800, Math.min(9000, totalSeconds(item) * 1000 * 0.85)));
+    }
     const base = item.op.op === "graph" || item.op.op === "notes" ? 1.4 : 1;
     return Math.round(Math.max(70, Math.min(300, 150 * base)));
   }
@@ -539,11 +550,24 @@ export default function App() {
 
   function anchorOf(op: Op, g: Geom): { x: number; y: number } {
     const b = opBBox(op) ?? [42, 34, 58, 42];
-    const x = g.boardX + ((b[0] + b[2]) / 2 / 100) * g.bw;
-    const y = g.boardY + ((b[1] + b[3]) / 2 / 75) * g.bh;
+    const scale = Math.min(g.bw / 100, g.bh / 75);
+    const offsetX = (g.bw - 100 * scale) / 2;
+    const offsetY = (g.bh - 75 * scale) / 2;
+    const x = g.boardX + offsetX + ((b[0] + b[2]) / 2) * scale;
+    const y = g.boardY + offsetY + ((b[1] + b[3]) / 2) * scale;
     return {
       x: Math.max(16, Math.min(g.w - 16, x)),
       y: Math.max(16, Math.min(g.boardY + g.bh - 8, y)),
+    };
+  }
+
+  function screenPointOf(point: [number, number], g: Geom): { x: number; y: number } {
+    const scale = Math.min(g.bw / 100, g.bh / 75);
+    const offsetX = (g.bw - 100 * scale) / 2;
+    const offsetY = (g.bh - 75 * scale) / 2;
+    return {
+      x: g.boardX + offsetX + point[0] * scale,
+      y: g.boardY + offsetY + point[1] * scale,
     };
   }
 
@@ -551,8 +575,11 @@ export default function App() {
   // sem tapar o que já está escrito
   function textAnchorOf(op: Op, g: Geom): { x: number; y: number } {
     const b = opBBox(op) ?? [12, 12, 40, 20];
-    const x = g.boardX + (b[0] / 100) * g.bw + 6;
-    const y = g.boardY + (b[1] / 75) * g.bh - 22;
+    const scale = Math.min(g.bw / 100, g.bh / 75);
+    const offsetX = (g.bw - 100 * scale) / 2;
+    const offsetY = (g.bh - 75 * scale) / 2;
+    const x = g.boardX + offsetX + b[0] * scale + 6;
+    const y = g.boardY + offsetY + b[1] * scale - 22;
     return {
       x: Math.max(14, Math.min(g.w - 14, x)),
       y: Math.max(18, Math.min(g.boardY + g.bh - 10, y)),
@@ -563,7 +590,7 @@ export default function App() {
   function lineAnchor(g: Geom, chars = 0): { x: number; y: number } {
     const lineTop = g.boardY + g.bh + 8;
     const perLine = Math.max(24, Math.floor((g.w - 56) / 8.2));
-    const lines = Math.max(1, Math.min(3, Math.ceil(chars / perLine)));
+    const lines = Math.max(1, Math.ceil(chars / perLine));
     return {
       x: 10,
       y: Math.min(g.h - 150, lineTop + (lines - 1) * 21 - 6),
@@ -599,11 +626,12 @@ export default function App() {
 
   function stopPlayback() {
     cancelRef.current = true;
+    blue.stopAnimation();
+    pink.stopAnimation();
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     setLive(null);
     clearCursorTimers();
-    Speech.stop();
     const id = playingIdRef.current;
     if (id) {
       const p = pagesRef.current.find((x) => x.id === id);
@@ -632,7 +660,6 @@ export default function App() {
     blueOp.setValue(1);
     pinkOp.setValue(1);
 
-    speakStep(p.say);
     later(() => moveBlue(lineAnchor(g, p.line.length)), titleMs(p.title) + 160);
 
     const fresh = p.items.filter((it) => p.newIds.includes(it.id));
@@ -641,11 +668,24 @@ export default function App() {
     let acc = 70;
     fresh.forEach((item) => {
       const d = fastDur(item);
-      starts.push(acc);
+      // Explicit motion offsets are measured from the start of this page's board playback.
+      const requestedStart = (item.op.op === "motion" || item.op.op === "scene") && item.op.start_ms != null
+        ? Math.max(0, Math.min(6000, item.op.start_ms))
+        : acc;
+      starts.push(requestedStart);
       durs.push(d);
-      acc += d + 28;
+      acc = Math.max(acc, requestedStart + d + 28);
     });
     const total = Math.max(420, acc - 28);
+    const hasOverlappingMotion = fresh.some((item, i) =>
+      item.op.op === "motion" && fresh.some((other, j) =>
+        i !== j &&
+        starts[j] < starts[i] + durs[i] &&
+        starts[j] + durs[j] > starts[i],
+      ),
+    );
+    // A single cursor cannot faithfully track overlapping moving objects.
+    if (hasOverlappingMotion) pinkOp.setValue(0);
 
     setLive({ pageId: p.id, items: fresh, starts, durs });
     setTick(0);
@@ -654,6 +694,34 @@ export default function App() {
         () => {
           if (item.op.op === "model3d") {
             movePink(anchorOf(item.op, g));
+            return;
+          }
+          if (item.op.op === "scene") {
+            // A composed scene has multiple simultaneous focal points.
+            blueOp.setValue(0);
+            pinkOp.setValue(0);
+            return;
+          }
+          // The guide cursor follows the same segment sequence as the particle.
+          // stopPlayback() cancels both if the student leaves this page.
+          if (item.op.op === "motion") {
+            if (hasOverlappingMotion) return;
+            const points = item.op.points;
+            const distances = points.slice(1).map((point, index) =>
+              Math.hypot(point[0] - points[index][0], point[1] - points[index][1]),
+            );
+            const totalDistance = distances.reduce((sum, distance) => sum + distance, 0) || 1;
+            pink.setValue(screenPointOf(points[0], g));
+            Animated.sequence(
+              distances.map((distance, index) =>
+                Animated.timing(pink, {
+                  toValue: screenPointOf(points[index + 1], g),
+                  duration: Math.max(30, Math.round(durs[i] * distance / totalDistance)),
+                  easing: Easing.linear,
+                  useNativeDriver: true,
+                }),
+              ),
+            ).start();
             return;
           }
           if (isTextOp(item.op)) moveBlue(textAnchorOf(item.op, g));
@@ -671,10 +739,10 @@ export default function App() {
     later(() => moveBlue(lineAnchor(g, p.line.length)), 20);
     const line = p.line ?? "";
     if (line) {
-      for (let i = 1; i <= line.length; i += 5) {
+      for (let i = 1; i <= line.length; i += 3) {
         if (playingIdRef.current !== p.id) return;
         setLineN(i);
-        await wait(14);
+        await wait(33);
       }
     }
     if (playingIdRef.current !== p.id) return;
@@ -713,23 +781,26 @@ export default function App() {
   ): StepPage[] {
     const title = (lesson.title?.trim() || opts.root || "Aula").slice(0, 48);
     const steps = lesson.steps;
-    let items: Item[] = [];
+    const prepared = steps.flatMap((step, sourceIndex) => {
+      const content = (step.write || step.say || "").replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "").trim();
+      return paginateLessonText(content).map((chunk, chunkIndex) => ({
+        step, sourceIndex, chunk, chunkIndex,
+      }));
+    });
+    const totalCount = prepared.length + (lesson.check ? 1 : 0);
     const out: StepPage[] = [];
 
-    steps.forEach((step, i) => {
-      let before = items;
-      const hasClear = step.board.some((o) => o.op === "clear");
-      const erased = new Set(
-        step.board
-          .filter((o: any) => o.op === "erase" && !!o.id)
-          .map((o: any) => String(o.id)),
-      );
-      if (hasClear) before = [];
-      else if (erased.size) before = before.filter((it) => !erased.has(it.id));
-
-      const next = applyOps(before, step.board as Op[], nextSeed);
+    prepared.forEach(({ step, sourceIndex, chunk, chunkIndex }, pageIndex) => {
+      // Cada bloco de texto tem espaço próprio. Se o modelo enviar uma
+      // explicação longa num único passo, ela é dividida sem cortar conteúdo.
+      const firstChunk = chunkIndex === 0;
+      const before: Item[] = [];
+      const layoutResult = firstChunk
+        ? applyOpsDetailed(before, step.board as Op[], nextSeed)
+        : { items: before, dropped: 0 };
+      const next = layoutResult.items;
       const beforeIds = new Set(before.map((it) => it.id));
-      items = next;
+      const lastPage = pageIndex === prepared.length - 1;
 
       out.push({
         id: newPageId(),
@@ -738,33 +809,60 @@ export default function App() {
         depth: opts.depth,
         history: opts.history,
         items: next,
+        layoutWarning: layoutResult.dropped > 0,
         newIds: next.filter((it) => !beforeIds.has(it.id)).map((it) => it.id),
-        suggestions: i === steps.length - 1 ? lesson.suggestions ?? [] : [],
+        suggestions: !lesson.check && lastPage ? lesson.suggestions ?? [] : [],
         state: "idle",
-        title,
-        subtitle: i === 0 ? lesson.subtitle : `passo ${i + 1} de ${steps.length}`,
-        stepIndex: i,
-        stepCount: steps.length,
-        say: step.say,
-        line: writeOf(step),
-        recap: step.recap,
-        numbers: step.numbers,
-        example: step.example,
-        mistake: step.mistake,
-        check: i === steps.length - 1 ? lesson.check : undefined,
+        title: firstChunk
+          ? step.title?.trim() || (sourceIndex === 0 ? title : `${title} · ${sourceIndex + 1}`)
+          : `${step.title?.trim() || title} · continuação`,
+        subtitle: !firstChunk
+          ? "continuação da explicação"
+          : step.subtitle?.trim() || (sourceIndex === 0 ? lesson.subtitle : `continuação · passo ${sourceIndex + 1} de ${steps.length}`),
+        stepIndex: pageIndex,
+        stepCount: totalCount,
+        say: chunk,
+        line: chunk,
+        recap: firstChunk ? step.recap : undefined,
+        numbers: firstChunk ? step.numbers : undefined,
+        example: firstChunk ? step.example : undefined,
+        mistake: firstChunk ? step.mistake : undefined,
+        check: undefined,
       });
     });
+
+    // A avaliação tem uma página própria: a explicação nunca é comprimida
+    // para encaixar também a pergunta e as opções no mesmo ecrã.
+    if (lesson.check) {
+      out.push({
+        id: newPageId(),
+        kind: "step",
+        root: opts.root,
+        depth: opts.depth,
+        history: opts.history,
+        items: [],
+        newIds: [],
+        suggestions: lesson.suggestions ?? [],
+        state: "done",
+        title: "Vamos testar?",
+        subtitle: "Aplica a ideia que acabaste de aprender.",
+        stepIndex: prepared.length,
+        stepCount: totalCount,
+        say: "",
+        line: "",
+        check: lesson.check,
+        quizOnly: true,
+      });
+    }
     return out;
   }
 
   function continueQuestion(lesson: Lesson, root: string, depth: number): string {
     const last = lesson.steps
-      .slice(-2)
-      .map((s) => writeOf(s))
+      .map((s) => String(s.write || s.say || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
       .join(" ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .slice(-300);
+      .slice(-900);
     return `Continua a aula sobre "${root}" (parte ${depth + 2}). Já ficou explicado: ${last}. Não repitas o que já foi dito: avança para o próximo conceito essencial, com um exemplo novo e um pormenor que só se compreende depois disto.`;
   }
 
@@ -799,7 +897,7 @@ export default function App() {
         question: p.question,
         key,
         pace: 3,
-        profile: "",
+        profile: (await masteryWriteRef.current, await getMasteryProfile(p.root)),
         boardNow: "",
         hasBoard: false,
         history: p.history,
@@ -816,7 +914,7 @@ export default function App() {
       const history: Msg[] = [
         ...p.history,
         { role: "user", content: p.question },
-        { role: "assistant", content: lesson.steps.map((s) => s.say).join(" ") },
+        { role: "assistant", content: lesson.steps.map((s) => s.write || s.say).join("\n\n") },
       ];
       const steps = makeStepPages(lesson, { history, root, depth: p.depth });
       const nextLoad = makeLoadPage({
@@ -916,10 +1014,8 @@ export default function App() {
       onMoveShouldSetPanResponder: (_e, g) => {
         if (pagingRef.current || modelOpen) return false;
         if (Math.abs(g.dy) <= 8 || Math.abs(g.dy) <= Math.abs(g.dx) * 1.15) return false;
-        // a rolar para cima com texto por ler: deixa rolar a página
-        if (g.dy < 0 && scrollY.current < scrollMax.current - 4) return false;
-        // a rolar para baixo com a página já no topo: deixa rolar a página
-        if (g.dy > 0 && scrollY.current > 4) return false;
+        // Um único gesto vertical controla o feed inteiro, como no TikTok.
+        // Não existe scroll interno em cada página.
         return true;
       },
       onPanResponderGrant: () => {
@@ -947,7 +1043,19 @@ export default function App() {
   // -------------------------------------------------------------------------
   // pedidos
 
-  function ask(text: string) {
+  function answerCheck(page: StepPage, index: number) {
+    if (!page.check || page.answered !== undefined) return;
+    const history = recordCheckAnswer(page.history, page.check, index);
+    if (!history) return;
+    patchPage(page.id, { answered: index, history });
+    // Regista evidência persistente por tema; a próxima explicação pode
+    // ajustar a profundidade sem assumir domínio com base numa única resposta.
+    masteryWriteRef.current = masteryWriteRef.current
+      .catch(() => undefined)
+      .then(() => recordMasteryAttempt(page.root, index === page.check!.answer_index));
+  }
+
+  function ask(text: string, continueCurrent = false) {
     const question = text.trim();
     if (!question) return;
     if (!key) {
@@ -959,11 +1067,12 @@ export default function App() {
     stopPlayback();
     const ps = pagesRef.current;
     const cur = ps[activeRef.current] ?? ps[0] ?? HERO;
+    const isContinuation = continueCurrent && cur.kind === "step";
     const load = makeLoadPage({
       question,
       history: cur.history,
-      root: topicFrom(question),
-      depth: 0,
+      root: isContinuation ? cur.root : topicFrom(question),
+      depth: isContinuation ? cur.depth + 1 : 0,
     });
 
     let next: Page[];
@@ -990,7 +1099,7 @@ export default function App() {
     const cur = ps[activeRef.current] ?? ps[0] ?? HERO;
     const root = seedLesson.title ?? "Mitose";
     const history: Msg[] = [
-      { role: "assistant", content: seedLesson.steps.map((s) => s.say).join(" ") },
+      { role: "assistant", content: seedLesson.steps.map((s) => s.write || s.say).join("\n\n") },
     ];
     const steps = makeStepPages(seedLesson, { history, root, depth: 0 });
     const nextLoad = makeLoadPage({
@@ -1032,6 +1141,7 @@ export default function App() {
   const activePageKind = page.kind;
 
   useEffect(() => {
+    setActiveHotspot(null);
     navRef.current = { active, total: pages.length, h: layout.h };
   }, [active, pages.length, layout.h]);
 
@@ -1098,11 +1208,20 @@ export default function App() {
   const modelBox = modelOp
     ? (() => {
         const b = opBBox(modelOp) ?? [10, 2, 88, 42];
+        // react-native-svg uses xMidYMid meet by default. The logical
+        // 100x75 board is letterboxed inside the wider phone rectangle;
+        // map the 3D overlay using that same scale/offset or it floats over
+        // neighbouring drawings.
+        const scale = Math.min(g.bw / 100, g.bh / 75);
+        const contentW = 100 * scale;
+        const contentH = 75 * scale;
+        const offsetX = (g.bw - contentW) / 2;
+        const offsetY = (g.bh - contentH) / 2;
         return {
-          left: Math.max(0, Math.min(g.bw, (b[0] / 100) * g.bw)),
-          top: Math.max(0, Math.min(g.bh, (b[1] / 75) * g.bh)),
-          width: Math.max(18, Math.min(g.bw, ((b[2] - b[0]) / 100) * g.bw)),
-          height: Math.max(18, Math.min(g.bh, ((b[3] - b[1]) / 75) * g.bh)),
+          left: offsetX + b[0] * scale,
+          top: offsetY + b[1] * scale,
+          width: Math.max(1, (b[2] - b[0]) * scale),
+          height: Math.max(1, (b[3] - b[1]) * scale),
         };
       })()
     : null;
@@ -1197,27 +1316,16 @@ export default function App() {
     const showSuggestions =
       pg.state === "done" &&
       pg.stepIndex === pg.stepCount - 1 &&
+      (!pg.quizOnly || pg.answered !== undefined) &&
       pg.suggestions.length > 0;
     const showSwipeHint =
       pg.state === "done" &&
-      (pg.stepCount === 1 || pg.stepIndex < pg.stepCount - 1);
+      (pg.quizOnly ? pg.answered !== undefined : (pg.stepCount === 1 || pg.stepIndex < pg.stepCount - 1));
     const visibleLine = pg.state === "done" && lineN === 0 ? pg.line : pg.line.slice(0, lineN);
 
     return (
       <View style={{ height: layout.h, overflow: "hidden" }}>
         <PagePaper />
-        <ScrollView
-          ref={pageScroll}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: 96 }}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          onScroll={(e: any) => {
-            const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-            scrollY.current = contentOffset.y;
-            scrollMax.current = Math.max(0, contentSize.height - layoutMeasurement.height);
-          }}
-        >
         <View style={[s.headBlock, { height: HEAD_H }]}>
           <HandHeading
             title={pg.title}
@@ -1229,13 +1337,15 @@ export default function App() {
           </Text>
         </View>
 
-        <View style={{ width: gg.bw, height: gg.bh, alignSelf: "center" }}>
+        {!pg.quizOnly && <View style={{ width: gg.bw, height: gg.bh, alignSelf: "center" }}>
           <Board
             ops={boardOps(pg)}
             fracOf={fracOf}
             width={gg.bw}
             height={gg.bh}
             paper={false}
+            onHotspotPress={setActiveHotspot}
+            activeHotspot={activeHotspot}
           />
           {!!modelOp && !!modelBox && (
             <View
@@ -1248,21 +1358,65 @@ export default function App() {
                 overflow: "hidden",
               }}
             >
-              <LiveModel op={modelOp} visible={modelVisible} onOpen={setModelOpen} />
+              <LiveModel op={modelOp} visible={modelOpen ? 0 : modelVisible} onOpen={setModelOpen} />
             </View>
           )}
-        </View>
+        </View>}
 
-        <View style={s.lineBox}>
-          {pg.state === "done" ? (
-            <NoteText text={pg.line} />
-          ) : visibleLine ? (
-            <Text style={s.lineText}>{visibleLine}</Text>
+        {!pg.quizOnly && pg.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
+        {!pg.quizOnly && <View style={[s.lineBox, { maxHeight: 290 }]}>
+          {!!activeHotspot && (() => {
+            const hit = pg.items.find((item) => item.id === activeHotspot);
+            if (!hit || hit.op.op !== "hotspot") return null;
+            return (
+              <View style={{ backgroundColor: "#edf1fa", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 }}>
+                <Text style={{ color: INK, fontFamily: "Quicksand_700Bold", fontSize: 13 }}>{hit.op.label}</Text>
+                <Text style={{ color: BODY, fontFamily: "Quicksand_500Medium", fontSize: 12.5, lineHeight: 18, marginTop: 2 }}>{hit.op.detail}</Text>
+              </View>
+            );
+          })()}
+          {visibleLine ? (
+            <NoteText text={visibleLine} />
           ) : (
             <View style={s.linePlaceholder} />
           )}
-          {pg.state === "done" && <PageCards page={pg} />}
-        </View>
+          {pg.state === "done" && <PageCards page={pg} compact />}
+        </View>}
+
+        {!!pg.check && (
+          <View style={s.quiz}>
+            <Text style={s.quizKicker}>confirma se percebeste</Text>
+            <Text style={s.quizPrompt}>{pg.check.prompt}</Text>
+            <View style={s.quizOpts}>
+              {pg.check.options.map((option, index) => {
+                const selected = pg.answered === index;
+                const correct = index === pg.check!.answer_index;
+                return (
+                  <Pressable
+                    key={index}
+                    onPress={() => answerCheck(pg, index)}
+                    disabled={pg.answered !== undefined}
+                    style={[
+                      s.quizOpt,
+                      selected && (correct ? s.quizRight : s.quizWrong),
+                    ]}
+                  >
+                    <View style={[s.quizKey, selected && (correct ? s.quizKeyRight : s.quizKeyWrong)]}>
+                      <Text style={s.quizKeyTxt}>{String.fromCharCode(65 + index)}</Text>
+                    </View>
+                    <Text style={s.quizOptTxt} numberOfLines={3}>{option}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {pg.answered !== undefined && (
+              <Text style={s.quizWhy}>
+                {pg.answered === pg.check.answer_index ? "Certo. " : "Ainda não. "}
+                {pg.check.explanation ?? (pg.answered === pg.check.answer_index ? "Boa, segue para a próxima página." : "Revê a explicação e tenta noutra pergunta.")}
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={s.bottomArea}>
 
@@ -1270,7 +1424,7 @@ export default function App() {
           {showSuggestions && (
             <View style={s.suggestRow}>
               {pg.suggestions.slice(0, 2).map((c) => (
-                <SuggestionPill key={c} text={c} onPress={() => ask(c)} />
+                <SuggestionPill key={c} text={c} onPress={() => ask(c, true)} />
               ))}
             </View>
           )}
@@ -1282,7 +1436,7 @@ export default function App() {
             </View>
           )}
         </View>
-        </ScrollView>
+
       </View>
     );
   };
@@ -1300,7 +1454,7 @@ export default function App() {
   return (
     <View style={s.root}>
       <StatusBar barStyle="dark-content" />
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#f6f3e9" }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#faf9f6" }}>
         <View style={s.header}>
           <Text style={s.headerLabel} numberOfLines={1}>
             {headerTopic}{" "}
@@ -1310,13 +1464,6 @@ export default function App() {
                 : `· ${active + 1}`}
             </Text>
           </Text>
-          <Pressable
-            onPress={() => setVoice((v) => !v)}
-            hitSlop={10}
-            style={s.headerBtn}
-          >
-            <Text style={s.headerBtnText}>{voice ? "som" : "mudo"}</Text>
-          </Pressable>
           <Pressable
             onPress={() => {
               setAskedOnce(false);
@@ -1420,8 +1567,10 @@ export default function App() {
               placeholder="Pergunta o que quiseres…"
               placeholderTextColor="#a3aaa4"
               style={s.input}
-              onSubmitEditing={() => ask(q)}
-              returnKeyType="send"
+              multiline
+              maxLength={1200}
+              textAlignVertical="center"
+              blurOnSubmit={false}
             />
             {working ? (
               <Pressable style={s.send} onPress={stopPlayback}>
@@ -1459,11 +1608,11 @@ export default function App() {
             <Text style={s.modalText}>
               {askedOnce
                 ? "Sem chave só consigo mostrar a aula de exemplo. Cola a chave OpenRouter para eu gerar aulas a partir do que escreveres."
-                : "A chave fica guardada só neste iPhone. Não vai para o código nem para o servidor da escola."}
+                : "A chave fica guardada nesta app e é enviada ao OpenRouter quando pedes uma aula. Não é incluída no código da aplicação."}
             </Text>
             <TextInput
               value={keyDraft}
-              onChangeText={setKeyDraft}
+              onChangeText={(value) => { setKeyDraft(value); setKeyError(null); }}
               placeholder="sk-or-v1-…"
               autoCapitalize="none"
               autoCorrect={false}
@@ -1474,10 +1623,15 @@ export default function App() {
               style={[s.primary, !looksLikeKey(keyDraft) && { opacity: 0.4 }]}
               disabled={!looksLikeKey(keyDraft)}
               onPress={async () => {
-                await saveKey(keyDraft);
-                setKey(keyDraft.trim());
-                setKeyDraft("");
-                setKeyOpen(false);
+                setKeyError(null);
+                try {
+                  await saveKey(keyDraft);
+                  setKey(keyDraft.trim());
+                  setKeyDraft("");
+                  setKeyOpen(false);
+                } catch {
+                  setKeyError("Não consegui guardar a chave no armazenamento seguro. Tenta novamente.");
+                }
               }}
             >
               <Text style={s.primaryText}>Guardar</Text>
@@ -1485,6 +1639,7 @@ export default function App() {
             <Pressable style={s.secondary} onPress={() => setKeyOpen(false)}>
               <Text style={s.secondaryText}>Agora não</Text>
             </Pressable>
+            {!!keyError && <Text style={s.keyError}>{keyError}</Text>}
             <Text style={s.modalFoot}>Chave actual: {key ? "ligada ✓" : "nenhuma"}</Text>
           </View>
         </View>
@@ -1496,7 +1651,7 @@ export default function App() {
 // ---------------------------------------------------------------------------
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#f6f3e9" },
+  root: { flex: 1, backgroundColor: "#faf9f6" },
 
   header: {
     height: 38,
@@ -1559,10 +1714,12 @@ const s = StyleSheet.create({
   },
 
   lineBox: {
-    paddingHorizontal: 24,
-    paddingTop: 6,
-    minHeight: 80,
-    maxHeight: 240,
+    paddingHorizontal: 22,
+    paddingTop: 3,
+    minHeight: 54,
+    maxHeight: 250,
+    flexShrink: 1,
+    overflow: "hidden",
   },
   lineText: {
     fontFamily: HAND,
@@ -1576,36 +1733,36 @@ const s = StyleSheet.create({
     width: 21,
     height: 21,
     borderRadius: 11,
-    backgroundColor: "#dfe9e2",
+    backgroundColor: "#e5ebf8",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 9,
     marginTop: 1,
   },
-  noteNumTxt: { fontFamily: QUICK, fontSize: 12, color: "#3d6b4a" },
-  noteBody: { flex: 1, fontFamily: QUICK, fontSize: 14.5, lineHeight: 20, color: BODY },
-  noteHead: { fontFamily: QUICK, color: "#2f3a33" },
+  noteNumTxt: { fontFamily: QUICK, fontSize: 12, color: "#4d68a5" },
+  noteBody: { flex: 1, fontFamily: QUICK, fontSize: 13.5, lineHeight: 17, color: BODY },
+  noteHead: { fontFamily: QUICK, color: "#2d3a54" },
   cards: { marginTop: 8 },
   nums: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6 },
   numPill: {
-    backgroundColor: "#eef3ec",
+    backgroundColor: "#edf1fa",
     borderRadius: 10,
     paddingHorizontal: 9,
     paddingVertical: 4,
   },
-  numLabel: { fontFamily: QUICK, fontSize: 10.5, color: "#79857b" },
-  numValue: { fontFamily: QUICK, fontSize: 13, color: "#2f3a33" },
+  numLabel: { fontFamily: QUICK, fontSize: 10.5, color: "#7c88a0" },
+  numValue: { fontFamily: QUICK, fontSize: 13, color: "#2d3a54" },
   cardLine: {
     fontFamily: QUICK,
     fontSize: 13,
     lineHeight: 18,
-    color: "#4a554e",
+    color: "#46536a",
     marginTop: 2,
   },
-  cardKey: { color: "#3d6b4a" },
+  cardKey: { color: "#4d68a5" },
   recapBox: {
     marginTop: 8,
-    backgroundColor: "#e7f1ea",
+    backgroundColor: "#edf1fa",
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
@@ -1613,17 +1770,26 @@ const s = StyleSheet.create({
   recapTitle: {
     fontFamily: HAND,
     fontSize: 17,
-    color: "#3d6b4a",
+    color: "#4d68a5",
     marginBottom: 4,
   },
   recapLine: {
     fontFamily: QUICK,
-    fontSize: 13.5,
-    lineHeight: 18,
-    color: "#4a554e",
+    fontSize: 12.5,
+    lineHeight: 16,
+    color: "#46536a",
     marginTop: 2,
   },
   linePlaceholder: { paddingTop: 7 },
+  layoutWarning: {
+    marginHorizontal: 22,
+    marginTop: 3,
+    marginBottom: 4,
+    color: "#8a775b",
+    fontFamily: "Quicksand_500Medium",
+    fontSize: 10.5,
+    lineHeight: 14,
+  },
 
   bottomArea: { flex: 1, justifyContent: "flex-end", paddingBottom: 6 },
 
@@ -1652,9 +1818,11 @@ const s = StyleSheet.create({
     marginTop: 3,
     fontFamily: "Quicksand_600SemiBold",
   },
-  quizOpts: { marginTop: 8, flexDirection: "row", gap: 6 },
+  quizOpts: { marginTop: 8, flexDirection: "row", flexWrap: "wrap", gap: 6 },
   quizOpt: {
-    flex: 1,
+    width: "48%",
+    flexGrow: 0,
+    flexShrink: 1,
     flexDirection: "column",
     alignItems: "flex-start",
     gap: 5,
@@ -1666,7 +1834,7 @@ const s = StyleSheet.create({
     borderColor: "rgba(63,71,64,0.16)",
     backgroundColor: "#fbfaf4",
   },
-  quizRight: { backgroundColor: "#e9f4ea", borderColor: "#7ba886" },
+  quizRight: { backgroundColor: "#e9effc", borderColor: "#8198ce" },
   quizWrong: { backgroundColor: "#f9ece8", borderColor: "#d3a096" },
   quizKey: {
     width: 22,
@@ -1676,11 +1844,11 @@ const s = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#eceadf",
   },
-  quizKeyRight: { backgroundColor: "#5c8a68" },
+  quizKeyRight: { backgroundColor: "#5878bd" },
   quizKeyWrong: { backgroundColor: "#b4514a" },
-  quizKeyTxt: { color: "#5b5f68", fontSize: 11.5, fontFamily: "Quicksand_700Bold" },
+  quizKeyTxt: { color: "#59657a", fontSize: 11.5, fontFamily: "Quicksand_700Bold" },
   quizOptTxt: { color: INK, fontSize: 12, lineHeight: 15 },
-  quizMark: { color: "#4f7b5c", fontSize: 14, fontFamily: "Quicksand_700Bold" },
+  quizMark: { color: "#5878bd", fontSize: 14, fontFamily: "Quicksand_700Bold" },
   quizWhy: {
     marginTop: 8,
     color: "#5f6a60",
@@ -1701,9 +1869,9 @@ const s = StyleSheet.create({
     minHeight: 44,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: "#b9dcc5",
+    borderColor: "#c7d4ef",
     borderBottomWidth: 1.5,
-    borderBottomColor: "#a9cdb6",
+    borderBottomColor: "#b5c5e8",
     overflow: "hidden",
     flexDirection: "row",
     alignItems: "center",
@@ -1711,7 +1879,7 @@ const s = StyleSheet.create({
     paddingRight: 10,
     paddingVertical: 6,
     gap: 6,
-    shadowColor: "#5f7f69",
+    shadowColor: "#667cae",
     shadowOpacity: 0.16,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 5 },
@@ -1732,7 +1900,7 @@ const s = StyleSheet.create({
     fontFamily: HAND,
     fontSize: 14.5,
     lineHeight: 16.5,
-    color: "#3f6a4c",
+    color: "#4966a7",
   },
 
   hero: {
@@ -1777,7 +1945,7 @@ const s = StyleSheet.create({
   },
   heroChip: {
     borderWidth: 1,
-    borderColor: "#e2ddcf",
+    borderColor: "#e0e4ee",
     backgroundColor: "#fffdf6",
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -1916,7 +2084,7 @@ const s = StyleSheet.create({
     paddingVertical: 4,
     backgroundColor: "#fffdf6",
     borderWidth: 1,
-    borderColor: "#e3ded0",
+    borderColor: "#e0e4ee",
     borderRadius: 28,
     shadowColor: "#6d6a5a",
     shadowOpacity: 0.14,
@@ -1930,13 +2098,14 @@ const s = StyleSheet.create({
     fontSize: 18,
     color: INK,
     paddingVertical: 8,
+    maxHeight: 104,
     fontFamily: HAND,
   },
   send: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: "#3f4a43",
+    backgroundColor: "#35435f",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1965,7 +2134,7 @@ const s = StyleSheet.create({
   },
   modalInput: {
     borderWidth: 1,
-    borderColor: "#e3ded0",
+    borderColor: "#e0e4ee",
     backgroundColor: "#fffdf6",
     borderRadius: 13,
     paddingHorizontal: 13,
@@ -1985,6 +2154,12 @@ const s = StyleSheet.create({
   primaryText: { color: "#faf8f1", fontFamily: "Quicksand_700Bold", fontSize: 15 },
   secondary: { alignItems: "center", paddingVertical: 10 },
   secondaryText: { color: MUTED, fontFamily: "Quicksand_500Medium", fontSize: 14 },
+  keyError: {
+    color: "#a45c50",
+    fontFamily: "Quicksand_600SemiBold",
+    fontSize: 12,
+    lineHeight: 16,
+  },
   modalFoot: {
     color: "#a2a7b3",
     fontSize: 11.5,

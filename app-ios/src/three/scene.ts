@@ -49,8 +49,8 @@ function mat(color, o) {
 // ---------------- cena ----------------
 const host = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-renderer.shadowMap.enabled = true;
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, INLINE ? 1 : 1.5));
+renderer.shadowMap.enabled = !INLINE;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.02;
@@ -64,8 +64,8 @@ scene.add(new THREE.HemisphereLight(0xfffdf2, 0x8d939d, 0.9));
 
 const key = new THREE.DirectionalLight(0xfff7ea, 2.0);
 key.position.set(2.6, 3.6, 2.4);
-key.castShadow = true;
-key.shadow.mapSize.set(1024, 1024);
+key.castShadow = !INLINE;
+key.shadow.mapSize.set(512, 512);
 key.shadow.camera.left = -3.2;
 key.shadow.camera.right = 3.2;
 key.shadow.camera.top = 3.2;
@@ -90,7 +90,7 @@ const floor = new THREE.Mesh(
 );
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -1.42;
-floor.receiveShadow = true;
+floor.receiveShadow = !INLINE;
 scene.add(floor);
 
 const assembly = new THREE.Group();
@@ -715,7 +715,7 @@ for (let i = 0; i < parts.length; i++) {
 let explodeT = 0;
 let explodeTarget = 0;
 let xray = false;
-let spin = true;
+let spin = !INLINE;
 let selected = null;
 
 function applyExplode(t) {
@@ -754,6 +754,8 @@ function select(part) {
     });
   }
   post(part ? { type: "pick", name: part.userData.name, note: part.userData.note } : { type: "pick", name: "", note: "" });
+  dirty = true;
+  wake();
 }
 
 // ---------------- câmara ----------------
@@ -772,6 +774,7 @@ function resize() {
   camera.updateProjectionMatrix();
   needFit = true;
   dirty = true;
+    wake();
 }
 
 const target = new THREE.Vector3(0, 0, 0);
@@ -867,6 +870,14 @@ function buildLabels() {
 
 let dirty = true;
 let needFit = true;
+let frameHandle = 0;
+function wake() {
+  if (!frameHandle) {
+    frameHandle = window.setTimeout(function () {
+      frameHandle = requestAnimationFrame(loop);
+    }, 33);
+  }
+}
 const v = new THREE.Vector3();
 
 function measure() {
@@ -1036,12 +1047,14 @@ host.addEventListener("pointermove", function (e) {
     az -= dx * 0.0085;
     pol = Math.max(0.32, Math.min(2.86, pol - dy * 0.0062));
     dirty = true;
+    wake();
   } else if (pointers.size === 2) {
     const it = Array.from(pointers.values());
     const d = Math.hypot(it[0].x - it[1].x, it[0].y - it[1].y);
     if (pinch) zoom = Math.max(0.55, Math.min(2.6, zoom * (pinch / Math.max(1, d))));
     pinch = d;
     dirty = true;
+    wake();
   }
 });
 
@@ -1063,6 +1076,7 @@ host.addEventListener("wheel", function (e) {
   e.preventDefault();
   zoom = Math.max(0.55, Math.min(2.6, zoom * (1 + e.deltaY * 0.0012)));
   dirty = true;
+    wake();
 }, { passive: false });
 
 // ---------------- ciclo ----------------
@@ -1072,10 +1086,13 @@ const clock = new THREE.Clock();
 function post(obj) {
   if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(obj));
 }
+window.addEventListener("error", function () {
+  post({ type: "error", message: "não consegui abrir o modelo 3D" });
+});
 
 let frames = 0;
 function loop() {
-  requestAnimationFrame(loop);
+  frameHandle = 0;
   const dt = Math.min(0.05, clock.getDelta());
 
   if (explodeTarget !== explodeT) {
@@ -1084,10 +1101,12 @@ function loop() {
     applyExplode(explodeT);
     needFit = true;
     dirty = true;
+    wake();
   }
   if (spin && !dragging) {
     az += dt * 0.16;
     dirty = true;
+    wake();
   }
 
   // reenquadra sempre que a explosão muda, para nada sair do ecrã
@@ -1095,38 +1114,52 @@ function loop() {
     fitCamera();
     needFit = false;
     dirty = true;
+    wake();
   }
-  dist = fitDist * zoom;
-  camera.position.set(
-    target.x + dist * Math.sin(pol) * Math.sin(az),
-    target.y + dist * Math.cos(pol),
-    target.z + dist * Math.sin(pol) * Math.cos(az)
-  );
-  camera.lookAt(target);
-  renderer.render(scene, camera);
-
+  // Quando a rotação está parada, só redesenha depois de uma alteração.
+  // Evita renderizar a mesma imagem 60 vezes por segundo no painel 3D.
   if (dirty) {
+    dist = fitDist * zoom;
+    camera.position.set(
+      target.x + dist * Math.sin(pol) * Math.sin(az),
+      target.y + dist * Math.cos(pol),
+      target.z + dist * Math.sin(pol) * Math.cos(az)
+    );
+    camera.lookAt(target);
+    renderer.render(scene, camera);
     placeLabels();
     dirty = false;
   }
   frames++;
-  if (frames === 3) post({ type: "ready" });
+  if (frames === 1) {
+    const boot = document.getElementById("boot");
+    if (boot) {
+      boot.style.opacity = "0";
+      setTimeout(function () { if (boot) boot.style.display = "none"; }, 400);
+    }
+    post({ type: "ready" });
+  }
+  if (spin || Math.abs(explodeTarget - explodeT) > 0.002) wake();
 }
-requestAnimationFrame(loop);
+wake();
 
 // ---------------- api ----------------
 window.__setExplode = function (t) {
   explodeTarget = clamp01(Number(t) || 0);
   spin = false;
   dirty = true;
+    wake();
 };
 window.__setXray = function (on) {
   xray = !!on;
   applyExplode(explodeT);
+  dirty = true;
+    wake();
 };
 window.__setSpin = function (on) {
   spin = !!on;
   dirty = true;
+    wake();
 };
 window.__reset = function () {
   az = CONF_THIS.az != null ? CONF_THIS.az : 0.62;
@@ -1134,6 +1167,7 @@ window.__reset = function () {
   zoom = 1; dist = fitDist;
   select(null);
   dirty = true;
+    wake();
 };
 
 let rt = null;
@@ -1170,6 +1204,7 @@ if (document.fonts && document.fonts.ready) {
   document.fonts.ready.then(function () {
     measure();
     dirty = true;
+    wake();
   });
 }
 `;
@@ -1246,14 +1281,6 @@ export function buildModelHtml(model: ModelId, mode: ModelMode = "modal"): strin
 </script>
 <script type="module">
 ${js}
-document.getElementById("boot").style.opacity = "0";
-setTimeout(function () {
-  var b = document.getElementById("boot");
-  if (b) b.style.display = "none";
-  if (window.ReactNativeWebView) {
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "ready" }));
-  }
-}, 550);
 </script>
 <script>
   setTimeout(function () {
@@ -1270,8 +1297,8 @@ setTimeout(function () {
 
 // Cena para um GLB remoto da Poly Pizza.
 // Duas utilizações:
-//   "inline" — ilustração viva dentro da página (sem toque, roda sozinha)
-//   "modal"  — painel grande, com arrasto e pinça
+//   "inline" — pré-visualização estática e leve dentro da página
+//   "modal"  — painel grande, com rotação, arrasto e pinça
 // As etiquetas são coladas ao modelo: são projectadas a partir da caixa 3D e
 // acompanham a rotação, com uma linha-guia até à peça.
 export type PolyMode = "inline" | "modal";
@@ -1364,7 +1391,7 @@ const clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
 
 const stage = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, INLINE ? 1 : 1.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.02;
@@ -1385,8 +1412,12 @@ rim.position.set(0, -3, -6);
 scene.add(rim);
 
 let az = 0.72, pol = 1.18, zoom = 1, fitDist = 5, radius = 0;
-let spin = true, dirty = true, dragging = false, needLayout = true;
+let spin = !INLINE, dirty = true, dragging = false, needLayout = true;
 let holder = null, boxLocal = null;
+let frameHandle = 0;
+function wake() {
+  if (!frameHandle) frameHandle = requestAnimationFrame(frame);
+}
 const look = new THREE.Vector3(0, 0, 0);
 
 // ---- etiquetas coladas ao modelo ----
@@ -1579,6 +1610,7 @@ function place() {
   camera.position.set(d * sp * Math.sin(az), d * cp, d * sp * Math.cos(az));
   camera.lookAt(look);
   dirty = true;
+  wake();
 }
 
 function fit() {
@@ -1598,7 +1630,7 @@ function resize() {
   place();
 }
 
-window.__setSpin = function (on) { spin = !!on; };
+window.__setSpin = function (on) { spin = !!on; wake(); };
 window.__setExplode = function () { /* modelo remoto não tem partes */ };
 window.__setXray = function () { /* nem raios X */ };
 window.__reset = function () {
@@ -1745,10 +1777,10 @@ window.addEventListener("resize", function () {
 
 let last = 0;
 function frame(t) {
-  requestAnimationFrame(frame);
-  if (t - last < 33) return;
-  const dt = Math.min(0.1, (t - last) / 1000);
-  last = t;
+  frameHandle = 0;
+  const now = Number.isFinite(t) ? t : 0;
+  const dt = last ? Math.min(0.1, Math.max(0, (now - last) / 1000)) : 0;
+  last = now;
   if (holder && spin && !dragging) {
     holder.rotation.y += SPIN_SPEED * dt;
     dirty = true;
@@ -1762,11 +1794,18 @@ function frame(t) {
     layoutLabels();
     needLayout = false;
   }
+  // Inline previews stay still. The full-screen model rotates at ~30 fps.
+  if (spin && !INLINE) {
+    frameHandle = window.setTimeout(function () {
+      frameHandle = 0;
+      wake();
+    }, 33);
+  }
 }
 
 resize();
 place();
-frame();
+wake();
 </script>
 <script>
   // se o CDN ou o GLB não responderem, o painel mostra o erro em vez de ficar

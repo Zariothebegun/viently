@@ -1,0 +1,15 @@
+{
+  "name": "Viently Expo development",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "postCreateCommand": "cd app-ios && npm install",
+  "forwardPorts": [
+    8081
+  ],
+  "portsAttributes": {
+    "8081": {
+      "label": "Expo Metro",
+      "onAutoForward": "notify",
+      "visibility": "public"
+    }
+  }
+}

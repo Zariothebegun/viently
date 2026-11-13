@@ -72,6 +72,10 @@ export function LiveModel({
     }).start();
   }, [preset, model, fade]);
 
+  // O preset também respeita a timeline do quadro: não aparece antes
+  // de o lápis chegar à zona reservada para o modelo.
+  if (visible <= 0.015) return null;
+
   if (preset) {
     // Na web a cena vive num iframe que engole os cliques; em vez de
     // depender do Pressable receber o toque, põe-se um overlay clicável
@@ -101,8 +105,6 @@ export function LiveModel({
       </View>
     );
   }
-
-  if (visible <= 0.015) return null;
 
   return (
     <Animated.View style={[styles.fill, { opacity: fade }]}>

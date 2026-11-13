@@ -15,10 +15,9 @@ function originOf(url: string): string {
 }
 
 /*
-  Ilustração 3D viva dentro da página.
-  O GLB (modelo real do catálogo Sandflow) é desenhado a rodar, com fundo
-  transparente e etiquetas coladas ao modelo. Enquanto carrega, ou se falhar,
-  mostra a pré-visualização do Sandflow como recurso de última instância.
+  Pré-visualização 3D estática dentro da página para poupar bateria e GPU.
+  O modelo completo e rotativo abre no painel de ecrã inteiro. Enquanto carrega,
+  ou se falhar, mostra a miniatura como recurso de última instância.
   O baseUrl é o do catálogo para o GLB ser same-origin dentro do WebView.
 */
 export function PolyStage({

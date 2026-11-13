@@ -7,31 +7,32 @@ export const LOGICAL_W = 100;
 export const LOGICAL_H = 75;
 
 export const PALETTE: Record<Ink, string> = {
-  ink: "#3b413d",
-  blue: "#4a7fae",
-  red: "#bf5b52",
-  green: "#4f7f5f",
-  orange: "#cf7a35",
-  purple: "#6f66b5",
-  gray: "#8a8f88",
-  yellow: "#c99a32",
+  ink: "#273247",
+  blue: "#4268b2",
+  red: "#c75e58",
+  green: "#4f8a83",
+  orange: "#d58b45",
+  purple: "#8173c4",
+  gray: "#8a93a2",
+  yellow: "#c89d3d",
 };
 
-// Preenchimento suave por cor — é o que dá o ar de marcador do referencial.
+// Cores com contraste suave: azul para ideias centrais, coral para alertas,
+// âmbar para transformações e lilás para conceitos. Verde é apenas apoio.
 export const FILL: Record<Ink, string> = {
   ink: "none",
-  blue: "#d3e3f1",
-  red: "#f2d5d0",
-  green: "#d9ead9",
-  orange: "#f6ddc6",
-  purple: "#e3dff7",
-  gray: "#eae8df",
-  yellow: "#f7e9c2",
+  blue: "#e2eafb",
+  red: "#fae5e1",
+  green: "#e3efed",
+  orange: "#faecd9",
+  purple: "#eeeafb",
+  gray: "#edf0f4",
+  yellow: "#f8f0d9",
 };
 
-export const PAPER = "#f7f5ec";
-export const GRID = "#e6e2d3";
-export const HILITE = "#f3e2a0";
+export const PAPER = "#fbfaf6";
+export const GRID = "#e9e8e2";
+export const HILITE = "#f6d98b";
 
 export const FONT = "GochiHand_400Regular";
 export const FONT_LIGHT = "GochiHand_400Regular";
@@ -189,16 +190,23 @@ export function wrapText(
   maxW?: number,
 ): string[] {
   const limit = maxW ?? (size === "xl" ? 88 : 52);
-  const words = String(text).replace(/\^/g, "").trim().split(/\s+/);
+  const words = String(text).replace(/\^/g, "").trim().split(/\s+/).filter(Boolean);
   const lines: string[] = [];
+  const maxChars = Math.max(1, Math.floor(limit / CHAR_W[size]));
   let line = "";
-  for (const w of words) {
-    const next = line ? `${line} ${w}` : w;
-    if (line && next.length * CHAR_W[size] > limit) {
-      lines.push(line);
-      line = w;
-    } else {
-      line = next;
+  for (const source of words) {
+    // Uma palavra técnica ou URL enorme também tem de caber no quadro.
+    const chunks = source.length > maxChars
+      ? source.match(new RegExp(".{1," + maxChars + "}", "g")) ?? [source]
+      : [source];
+    for (const word of chunks) {
+      const next = line ? line + " " + word : word;
+      if (line && next.length * CHAR_W[size] > limit) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
     }
   }
   if (line) lines.push(line);

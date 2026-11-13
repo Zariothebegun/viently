@@ -3,41 +3,107 @@
 // que nada sai do quadro, nada se sobrepõe de forma ilegível, e que as
 // setas acabam na borda da forma e não no meio dela.
 
-import { CHAR_W, LINE_H, clampPt, dist } from "./geom";
+import { CHAR_W, LINE_H, clampPt, dist, textWidth, wrapText } from "./geom";
 import type { Item, Op, Pt, Size } from "./ops";
 
 type Box = [number, number, number, number];
 type Placed = { b: Box; w: number };
 
-const TEXT_H: Record<Size, number> = { s: 3.6, m: 5.5, l: 6.4, xl: 7.6 };
-
 export function opBBox(op: any): Box | null {
   const k = op.op;
-  if (k === "title") return [8, 1, 92, 13];
+  if (k === "title") return [0, 0, 100, 22];
   if (k === "text" || k === "note") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
-    const size: Size = op.size ?? (k === "text" ? "m" : "s");
-    const w = Math.min(
-      String(op.text ?? "").length * CHAR_W[size],
-      48,
-    );
-    const lines = Math.max(1, Math.floor(w / 52) + 1);
-    const h = TEXT_H[size] * lines;
+    const size: Size = k === "note" ? "s" : (op.size ?? "m");
+    // Medir exactamente as linhas que o renderer desenha. A estimativa antiga
+    // calculava sempre uma linha e deixava o layout colocar texto por cima.
+    const fitW = Number.isFinite(Number(op.fit_w)) && Number(op.fit_w) > 0
+      ? Number(op.fit_w)
+      : undefined;
+    const lines = wrapText(String(op.text ?? ""), size, fitW);
+    const w = Math.max(1, Math.min(fitW ?? (size === "xl" ? 88 : 52),
+      ...lines.map((line) => line.length * CHAR_W[size])));
+    const h = Math.max(LINE_H[size], lines.length * LINE_H[size]);
     const x0 = op.align === "center" ? x - w / 2 : x;
     return [x0, y - h / 2, x0 + w, y + h / 2];
+  }
+  if (k === "motion") {
+    const points: Pt[] = Array.isArray(op.points) ? op.points : [];
+    if (points.length < 2) return null;
+    const xs = points.map((p) => p[0]);
+    const ys = points.map((p) => p[1]);
+    const labelPad = op.label ? Math.min(28, String(op.label).length * 1.35) : 0;
+    return [
+      Math.max(0, Math.min(...xs) - 3),
+      Math.max(0, Math.min(...ys) - 7),
+      Math.min(100, Math.max(...xs) + 3 + Math.min(52, String(op.label ?? "").length * CHAR_W.s)),
+      Math.min(75, Math.max(...ys) + 3),
+    ];
   }
   if (k === "graph") {
     const [x, y] = (op.at ?? [12, 22]) as Pt;
     // inclui a faixa do título e dos eixos, senão o texto cai em cima deles
-    return [x - 2, y - 7, x + (op.w ?? 44) + 2, y + (op.h ?? 30) + 9];
+    return [x - 20, y - 9, x + (op.w ?? 44) + 5, y + (op.h ?? 30) + 11];
+  }
+  if (k === "code") {
+    const [x, y] = (op.at ?? [3, 4]) as Pt;
+    const n = Array.isArray(op.lines) ? op.lines.length : 8;
+    return [x, y, x + (op.w ?? 94), y + (op.h ?? 7.8 + n * 3.8)];
+  }
+  if (k === "plot3d") {
+    const [x, y] = (op.at ?? [10, 10]) as Pt;
+    return [x, y - 4, x + (op.w ?? 70), y + (op.h ?? 44) + 6];
   }
   if (k === "box" || k === "ellipse" || k === "axes") {
     const [x, y] = (op.at ?? [10, 20]) as Pt;
-    return [x, y, x + (op.w ?? 20), y + (op.h ?? 10)];
+    const w = Number(op.w ?? 20);
+    const h = Number(op.h ?? 10);
+    if (k === "axes") {
+      // Os nomes dos eixos são desenhados fora do rectângulo principal.
+      return [x - 12, y - 9, x + w + 30, y + h + 9];
+    }
+    let bounds: Box = [x, y, x + w, y + h];
+    if (op.label) {
+      const size: Size = op.size ?? "m";
+      const maxW = w * (k === "ellipse" ? 0.76 : 0.9);
+      const lines = wrapText(String(op.label), size, maxW);
+      const labelW = Math.min(maxW, ...lines.map((line) => line.length * CHAR_W[size]));
+      const labelH = lines.length * LINE_H[size];
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      bounds = [
+        Math.min(bounds[0], cx - labelW / 2),
+        Math.min(bounds[1], cy - labelH / 2),
+        Math.max(bounds[2], cx + labelW / 2),
+        Math.max(bounds[3], cy + labelH / 2),
+      ];
+    }
+    return bounds;
   }
   if (k === "model3d") {
     const [x, y] = (op.at ?? [58, 16]) as Pt;
     return [x, y, x + (op.w ?? 34), y + (op.h ?? 18)];
+  }
+  if (k === "hotspot") {
+    const [x, y] = (op.at ?? [50, 38]) as Pt;
+    const label = String(op.label ?? "");
+    const w = Math.min(52, textWidth(label, "s"));
+    // O rótulo fica à direita do ponto; perto da margem passa para a esquerda.
+    const lx = x > 62 ? Math.max(2, x - 4 - w) : Math.min(98 - w, x + 4);
+    const ly = Math.max(5, y - 3.5);
+    return [Math.min(x - 5.5, lx - 0.8), Math.min(y - 5.5, ly - 2.2),
+      Math.max(x + 5.5, lx + w + 0.8), Math.max(y + 5.5, ly + 2.2)];
+  }
+  if (k === "scene") {
+    const boxes = (op.elements ?? []).map((element: any) => opBBox(element?.op))
+      .filter((b: Box | null): b is Box => !!b);
+    if (!boxes.length) return null;
+    return [
+      Math.min(...boxes.map((b: Box) => b[0])),
+      Math.min(...boxes.map((b: Box) => b[1])),
+      Math.max(...boxes.map((b: Box) => b[2])),
+      Math.max(...boxes.map((b: Box) => b[3])),
+    ];
   }
   if (k === "polygon") {
     const pts: Pt[] = op.points ?? [[10, 20]];
@@ -61,18 +127,39 @@ export function opBBox(op: any): Box | null {
     let h = 1.5;
     let w = 8;
     for (const l of lines) {
-      const cw = l.size === "m" ? 1.9 : 1.45;
-      const n = Math.max(1, Math.ceil((l.t.length * cw) / maxW));
-      const base = l.size === "m" ? 6.2 : compact ? 4.0 : 5.2;
-      h += base + (n - 1) * (compact ? 3.2 : 3.9);
-      w = Math.max(w, Math.min(l.t.length * cw + 3, 42));
+      const wrapped = wrapText(l.t, l.size, maxW);
+      const base = l.size === "m" ? (compact ? 4.8 : 6.2) : compact ? 4.0 : 5.2;
+      h += base + (wrapped.length - 1) * (compact ? 3.2 : 3.9);
+      const rowW = Math.max(...wrapped.map((line) => line.length * CHAR_W[l.size]));
+      w = Math.max(w, Math.min(rowW + 3, maxW + 3));
     }
     return [x - 1, y - 3, x + w, y + h];
+  }
+  if (k === "arrow" && op.label) {
+    const from = (op.from ?? [0, 0]) as Pt;
+    const to = (op.to ?? [10, 10]) as Pt;
+    const [x, y] = (op.label_at ?? [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2 - 3.4]) as Pt;
+    const lines = wrapText(String(op.label), "s");
+    const w = Math.min(52, ...lines.map((line) => line.length * CHAR_W.s));
+    const h = lines.length * LINE_H.s;
+    return [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
   }
   if (k === "callout" && op.label) {
     const [x, y] = (op.label_at ?? op.to ?? [55, 35]) as Pt;
     const w = Math.min(String(op.label).length * 1.45, 28);
     return [x - w / 2, y - 2.5, x + w / 2, y + 2.5];
+  }
+  if (k === "dot" && op.at && op.label) {
+    const [x, y] = op.at as Pt;
+    const label = String(op.label);
+    const lines = wrapText(label, "s");
+    const w = Math.min(52, ...lines.map((line) => line.length * CHAR_W.s));
+    const h = lines.length * LINE_H.s;
+    const center = !!op.label_at;
+    const [lx, ly] = (op.label_at ?? [x + 2.5, y - 2.5]) as Pt;
+    const x0 = center ? lx - w / 2 : lx;
+    return [Math.min(x - 1.2, x0), Math.min(y - 1.2, ly - h / 2),
+      Math.max(x + 1.2, x0 + w), Math.max(y + 1.2, ly + h / 2)];
   }
   return null;
 }
@@ -208,12 +295,13 @@ function capCallout(op: any, maxLen = 24) {
 export type LayoutResult = {
   ops: Op[];
   placed: Placed[];
+  dropped: number;
 };
 
 export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   const placed: Placed[] = [...prior];
   const displaced: { b: Box; dx: number; dy: number }[] = [];
-  const dropped: Box[] = [];
+  let droppedCount = 0;
   let hasTitle = ops.some((o) => o.op === "title");
   let areaUsed = placed.reduce((s, p) => s + (p.b[2] - p.b[0]) * (p.b[3] - p.b[1]), 0);
 
@@ -222,41 +310,96 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
   for (const raw of ops) {
     const op: any = { ...raw };
     const kind = op.op;
-    const stroke = ["curve", "line", "arrow"].includes(kind);
+    if (kind === "scene" && Array.isArray(op.elements)) {
+      // Os elementos da cena também passam pelo motor de colisões. Não se
+      // altera at_ms/duration_ms: só a geometria espacial dos elementos.
+      let childPlaced: Placed[] = [];
+      const elements: any[] = [];
+      for (const element of op.elements) {
+        const child = element?.op;
+        if (!child || typeof child !== "object") continue;
+        const result = layoutPass([child as Op], childPlaced);
+        droppedCount += result.dropped;
+        if (!result.ops.length) continue;
+        elements.push({ ...element, op: result.ops[0] });
+        childPlaced = result.placed;
+      }
+      op.elements = elements;
+      if (!elements.length) {
+        droppedCount++;
+        continue;
+      }
+    }
+    const stroke = ["curve", "line", "arrow", "motion"].includes(kind);
     const ylo = hasTitle && stroke ? 16.5 : 3;
     if (op.at) op.at = clampPt(op.at);
     if (op.from) op.from = clampPt(op.from, ylo);
     if (op.to) op.to = clampPt(op.to, ylo);
     if (op.around) op.around = clampPt(op.around, ylo);
     if (Array.isArray(op.points)) op.points = op.points.slice(0, 12).map((p: Pt) => clampPt(p, ylo));
-    if (["box", "ellipse", "axes", "graph", "model3d"].includes(kind)) {
-      const [x, y] = op.at ?? [10, 20];
-      op.w = Math.min(Number(op.w ?? (kind === "model3d" ? 34 : 20)) || 20, 96 - x);
-      op.h = Math.min(Number(op.h ?? (kind === "model3d" ? 18 : 10)) || 10, 71 - y);
+    if (["box", "ellipse", "axes", "graph", "model3d", "code", "plot3d"].includes(kind)) {
+      const [rawX, rawY] = op.at ?? [10, 20];
+      const x = Math.min(96, Math.max(2, Number(rawX) || 2));
+      const y = Math.min(71, Math.max(3, Number(rawY) || 3));
+      op.at = [x, y];
+      const defaultW = kind === "model3d" ? 54 : kind === "code" ? 94 : kind === "plot3d" ? 70 : 20;
+      const defaultH = kind === "model3d" ? 38
+        : kind === "code" ? 7.8 + (Array.isArray(op.lines) ? op.lines.length : 8) * 3.8
+        : kind === "plot3d" ? 44 : 10;
+      op.w = Math.max(1, Math.min(Number(op.w ?? defaultW) || defaultW, 98 - x));
+      op.h = Math.max(1, Math.min(Number(op.h ?? defaultH) || defaultH, 73 - y));
     }
-    if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d"].includes(kind)) {
+    if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d", "scene", "hotspot", "code", "plot3d"].includes(kind)) {
       const bb = opBBox(op);
       if (bb) {
         let est = (bb[2] - bb[0]) * (bb[3] - bb[1]);
         if (kind === "notes") est *= 0.6;
-        if (kind !== "title" && areaUsed + est > 5200) continue;
+        if (kind !== "title" && areaUsed + est > 5200) {
+          droppedCount++;
+          continue;
+        }
         areaUsed += est;
       }
     }
     work.push(op);
   }
 
+  // Reserva primeiro o rectângulo 3D. Assim, texto e formas são deslocados
+  // para fora do modelo em vez de ficarem desenhados por cima dele.
+  work.sort((a, b) => Number(b.op === "model3d") - Number(a.op === "model3d"));
+  const modelRegions = work
+    .filter((op) => op.op === "model3d")
+    .map((op) => opBBox(op))
+    .filter((b): b is Box => !!b);
+  const insideModel = (p: Pt) =>
+    modelRegions.some(([x1, y1, x2, y2]) => p[0] > x1 && p[0] < x2 && p[1] > y1 && p[1] < y2);
+  const crossesModel = (a: Pt, b: Pt) =>
+    segSamples(a, b, 3).some(insideModel);
+
+  // Uma cena é composta primeiro, preservando os tempos de cada elemento.
+  // O seu rectângulo total fica reservado para as restantes operações.
+  for (const op of work.filter((item) => item.op === "scene")) {
+    const b = opBBox(op);
+    if (!b || modelRegions.some((m) => overlapArea(b, m) > 0)) {
+      op._drop = true;
+      continue;
+    }
+    placed.push({ b, w: 1 });
+  }
+
   // 1. formas procuram espaço
   for (const op of work) {
+    if (op.op === "scene" || op.op === "hotspot") continue;
     const kind = op.op;
     if (kind === "title") {
       const b = opBBox(op);
       if (b) placed.push({ b, w: 2.5 });
       continue;
     }
-    if (!["box", "ellipse", "axes", "graph", "polygon", "notes", "model3d"].includes(kind)) continue;
+    if (!["box", "ellipse", "axes", "graph", "polygon", "notes", "model3d", "code", "plot3d"].includes(kind)) continue;
 
     if (kind === "notes" && !op.compact && solidArea(placed) > 2600) op.compact = true;
+    const originalBBox = opBBox(op);
 
     const minW = String(op.label ?? "").length * 2.2 + 6;
     let best: { pos: Pt; bbox: Box; score: number } | null = null;
@@ -332,16 +475,18 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       }
     }
 
-    if (!best) continue;
+    if (!best) {
+      op._drop = true;
+      continue;
+    }
     if (best.score > 6) {
       // empilhado é pior do que ausente
       op._drop = true;
-      dropped.push([x0Of(op) - 3, y0Of(op) - 3, x0Of(op) + 6, y0Of(op) + 6]);
       continue;
     }
     const { pos, bbox } = best;
-    const dx = pos[0] - (kind === "polygon" || kind === "notes" ? bbox[0] : (op.at?.[0] ?? 0));
-    const dy = pos[1] - (kind === "polygon" || kind === "notes" ? bbox[1] : (op.at?.[1] ?? 0));
+    const dx = pos[0] - (kind === "polygon" || kind === "notes" ? (originalBBox?.[0] ?? 0) : (op.at?.[0] ?? 0));
+    const dy = pos[1] - (kind === "polygon" || kind === "notes" ? (originalBBox?.[1] ?? 0) : (op.at?.[1] ?? 0));
     if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
       displaced.push({ b: bbox, dx, dy });
     }
@@ -363,6 +508,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     if (kind === "arrow" || kind === "line") {
       op.from = shiftPt(op.from, displaced);
       op.to = shiftPt(op.to, displaced);
+      if (crossesModel(op.from, op.to)) {
+        op._drop = true;
+        continue;
+      }
       if (kind === "arrow") {
         op.from = snapEndpoint(op.from, op.to, placed);
         op.to = snapEndpoint(op.to, op.from, placed);
@@ -371,9 +520,35 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       for (const [x, y] of segSamples(op.from, op.to, 5)) {
         placed.push({ b: [x - 2.2, y - 2.2, x + 2.2, y + 2.2], w: 0.25 });
       }
+      if (kind === "arrow" && op.label) {
+        const base: Pt = op.label_at ?? [
+          (op.from[0] + op.to[0]) / 2,
+          (op.from[1] + op.to[1]) / 2 - 3.4,
+        ];
+        const lines = wrapText(String(op.label), "s");
+        const w = Math.min(52, ...lines.map((line) => line.length * CHAR_W.s));
+        const h = lines.length * LINE_H.s;
+        let best = { pos: base, sc: Infinity };
+        for (const [dx, dy] of LABEL_CANDIDATES) {
+          const pos = clampPt([base[0] + dx, base[1] + dy]);
+          const b: Box = [pos[0] - w / 2, pos[1] - h / 2, pos[0] + w / 2, pos[1] + h / 2];
+          const sc = score(b, placed);
+          if (sc < best.sc) best = { pos, sc };
+          if (sc <= 0.5) break;
+        }
+        op.label_at = best.pos;
+        placed.push({
+          b: [best.pos[0] - w / 2, best.pos[1] - h / 2, best.pos[0] + w / 2, best.pos[1] + h / 2],
+          w: 1,
+        });
+      }
     } else if (kind === "callout") {
       op.around = shiftPt(op.around ?? [50, 38], displaced);
       op.to = shiftPt(op.to ?? [60, 32], displaced);
+      if (crossesModel(op.around, op.to) || insideModel(op.around) || insideModel(op.to)) {
+        op._drop = true;
+        continue;
+      }
       ringToShapeEdge(op, work);
       capCallout(op);
       if (op.label) {
@@ -403,9 +578,13 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       for (const [x, y] of segSamples(op.around, op.to, 5)) {
         placed.push({ b: [x - 1.8, y - 1.8, x + 1.8, y + 1.8], w: 0.2 });
       }
-    } else if (kind === "curve" || kind === "polygon") {
+    } else if (kind === "curve" || kind === "polygon" || kind === "motion") {
       let pts: Pt[] = [...(op.points ?? [])];
       if (kind === "polygon" && pts.length >= 3) pts = [...pts, pts[0]];
+      if (pts.some(insideModel) || pts.some((p, i) => i > 0 && crossesModel(pts[i - 1], p))) {
+        op._drop = true;
+        continue;
+      }
       for (let i = 0; i < pts.length - 1; i++) {
         for (const [x, y] of segSamples(pts[i], pts[i + 1], 6)) {
           placed.push({ b: [x - 2.2, y - 2.2, x + 2.2, y + 2.2], w: 0.25 });
@@ -413,6 +592,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       }
     } else if (kind === "dot" && op.at) {
       op.at = shiftPt(op.at, displaced);
+      if (insideModel(op.at)) {
+        op._drop = true;
+        continue;
+      }
       placed.push({ b: [op.at[0] - 1.2, op.at[1] - 1.2, op.at[0] + 1.2, op.at[1] + 1.2], w: 0.6 });
       if (op.label) {
         const lp: Pt = op.label_at ?? [op.at[0] + 2.5, op.at[1] - 2.5];
@@ -420,6 +603,28 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
         const x0 = op.label_at ? lp[0] - lw / 2 : lp[0];
         placed.push({ b: [x0, lp[1] - 2, x0 + lw, lp[1] + 2], w: 0.8 });
       }
+    } else if (kind === "hotspot" && op.at) {
+      op.at = shiftPt(op.at, displaced);
+      if (insideModel(op.at)) {
+        op._drop = true;
+        continue;
+      }
+      const original = [...op.at] as Pt;
+      let best: { at: Pt; b: Box; sc: number } | null = null;
+      for (const [dx, dy] of [[0, 0], [0, -7], [0, 7], [-9, 0], [9, 0], [0, 13], [0, -13]] as Pt[]) {
+        const at = clampPt([original[0] + dx, original[1] + dy]);
+        const b = opBBox({ ...op, at });
+        if (!b) continue;
+        const sc = score(b, placed) + (Math.abs(dx) + Math.abs(dy)) * 0.025;
+        if (!best || sc < best.sc) best = { at, b, sc };
+        if (sc <= 0.5) break;
+      }
+      if (!best || best.sc > 8) {
+        op._drop = true;
+        continue;
+      }
+      op.at = best.at;
+      placed.push({ b: best.b, w: 1 });
     }
   }
 
@@ -493,7 +698,8 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     }
   }
 
-  return { ops: work.filter((o) => !o._drop) as Op[], placed };
+  const droppedInWork = work.filter((o) => o._drop).length;
+  return { ops: work.filter((o) => !o._drop) as Op[], placed, dropped: droppedCount + droppedInWork };
 }
 
 function x0Of(op: any): number {
@@ -506,7 +712,11 @@ function y0Of(op: any): number {
 }
 
 // Aplica ops novas por cima do quadro existente, tratando clear/erase.
-export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => number): Item[] {
+export function applyOpsDetailed(
+  existing: Item[],
+  incoming: Op[],
+  nextSeed: () => number,
+): { items: Item[]; dropped: number } {
   let base = [...existing];
   const fresh: Op[] = [];
 
@@ -527,13 +737,18 @@ export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => numbe
     .filter((b): b is Box => !!b)
     .map((b) => ({ b, w: 1 }));
 
-  const { ops } = layoutPass(fresh, prior);
-  return [
+  const result = layoutPass(fresh, prior);
+  const items = [
     ...base,
-    ...ops.map((op, i) => ({
+    ...result.ops.map((op, i) => ({
       id: `op-${nextSeed()}-${i}`,
       op,
       seed: nextSeed(),
     })),
   ];
+  return { items, dropped: result.dropped };
+}
+
+export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => number): Item[] {
+  return applyOpsDetailed(existing, incoming, nextSeed).items;
 }

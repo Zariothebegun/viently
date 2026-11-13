@@ -1,4 +1,24 @@
 import React from "react";
+
+class OpBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: Error) {
+    // Um elemento SVG inválido não deve derrubar a página inteira.
+    if (__DEV__) console.warn("Viently: elemento visual ignorado", error.message);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 import Svg, { Circle, Ellipse, G, Line, Path, Rect, Text as T } from "react-native-svg";
 import {
   CHAR_W,
@@ -21,6 +41,7 @@ import {
   wrapText,
 } from "./geom";
 import { partFrac, timingOf, type Timing } from "./timeline";
+import { CodeBlock, Plot3dBlock } from "./Blocks";
 import type { Item, Pt, Size } from "./ops";
 
 const W = 0.55;
@@ -250,158 +271,126 @@ function GraphOp({
   seed: number;
   t: Timing;
 }) {
-  const rnd = mulberry32(seed);
   const [x, y] = (op.at ?? [12, 22]) as Pt;
-  const w = op.w ?? 56;
-  const h = op.h ?? 34;
+  const w = Math.max(12, op.w ?? 58);
+  const h = Math.max(12, op.h ?? 38);
   const [xmin, xmax] = (op.x_range ?? [0, 1]) as Pt;
   const [ymin, ymax] = (op.y_range ?? [0, 1]) as Pt;
-  const xspan = Math.max(1e-9, xmax - xmin);
-  const yspan = Math.max(1e-9, ymax - ymin);
-  const map = (p: Pt): Pt => [
-    x + clamp01((p[0] - xmin) / xspan) * w,
-    y + h - clamp01((p[1] - ymin) / yspan) * h,
+  const xs = xmax > xmin ? xmax - xmin : 1;
+  const ys = ymax > ymin ? ymax - ymin : 1;
+  const map = (point: Pt): Pt => [
+    x + ((point[0] - xmin) / xs) * w,
+    y + h - ((point[1] - ymin) / ys) * h,
   ];
   const fmt = (v: number) => {
-    const a = Math.abs(v);
-    if (a >= 10000 || (a > 0 && a < 0.01)) return v.toExponential(1).replace(".", ",");
-    return String(Math.round(v * 100) / 100).replace(".", ",");
+    const n = Math.abs(v) < 0.001 ? 0 : v;
+    return Number(n.toFixed(2)).toLocaleString("pt-PT", { maximumFractionDigits: 2 });
   };
-
   const series = (Array.isArray(op.series) ? op.series : [])
     .slice(0, 4)
-    .filter((s: any) => (s?.points ?? []).length >= 2);
+    .map((s: any) => ({
+      ...s,
+      points: (Array.isArray(s.points) ? s.points : [])
+        .filter((p: any) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+        .slice()
+        .sort((a: Pt, b: Pt) => a[0] - b[0]),
+    }))
+    .filter((s: any) => s.points.length >= 2);
   const p = (i: number) => partFrac(t, frac, i);
-  const scaffold = p(0);
-  const ticks = p(1);
-  const labelP = p(2 + series.length);
-  const markerP = p(3 + series.length);
-  const titleP = p(4 + series.length);
-  const xlabelP = p(5 + series.length);
-  const ylabelP = p(6 + series.length);
+  const gridP = p(0);
+  const axisP = p(1);
+  const dataP = p(2);
+  const labelsP = p(3);
+  const zeroY = ymin <= 0 && ymax >= 0 ? map([xmin, 0])[1] : y + h;
+  const zeroX = xmin <= 0 && xmax >= 0 ? map([0, ymin])[0] : x;
+  const makeD = (points: Pt[], progress: number) => {
+    if (points.length < 2 || progress <= 0) return "";
+    const total = points.length - 1;
+    const upto = Math.max(1, Math.min(total, progress * total));
+    const full = Math.floor(upto);
+    const partial = upto - full;
+    const shown = points.slice(0, full + 1);
+    if (partial > 0 && full < total) {
+      const from = points[full];
+      const to = points[full + 1];
+      shown.push([from[0] + (to[0] - from[0]) * partial, from[1] + (to[1] - from[1]) * partial]);
+    }
+    return shown.map((pt, i) => `${i ? "L" : "M"} ${pt[0].toFixed(2)} ${pt[1].toFixed(2)}`).join(" ");
+  };
 
   return (
     <G>
       {[1, 2, 3, 4].map((i) => (
-        <React.Fragment key={`g${i}`}>
-          {stroked(jitterSeg(rnd, [x + (w * i) / 5, y], [x + (w * i) / 5, y + h], 0.4), scaffold, PALETTE.gray, W * 0.35)}
-          {stroked(jitterSeg(rnd, [x, y + (h * i) / 5], [x + w, y + (h * i) / 5], 0.4), scaffold, PALETTE.gray, W * 0.35)}
+        <React.Fragment key={`grid-${i}`}>
+          {stroked([[x + (w * i) / 5, y], [x + (w * i) / 5, y + h]], gridP, PALETTE.gray, W * 0.28)}
+          {stroked([[x, y + (h * i) / 5], [x + w, y + (h * i) / 5]], gridP, PALETTE.gray, W * 0.28)}
         </React.Fragment>
       ))}
-      {stroked(jitterSeg(rnd, [x, y], [x, y + h], 0.5), scaffold, PALETTE.ink)}
-      {stroked(jitterSeg(rnd, [x, y + h], [x + w, y + h], 0.5), scaffold, PALETTE.ink)}
-      {ticks > 0 &&
-        Array.from({ length: 6 }, (_, i) => (
-          <React.Fragment key={`t${i}`}>
-            <RevealText
-              text={fmt(xmin + (xspan * i) / 5)}
-              at={[x + (w * i) / 5, y + h + 4]}
-              size="s"
-              fill={PALETTE.gray}
-              frac={ticks}
-              align="center"
-              seed={seed + i}
-            />
-            {i % 2 === 0 && (
-              <RevealText
-                text={fmt(ymin + (yspan * i) / 5)}
-                at={[x - 3, y + h - (h * i) / 5]}
-                size="s"
-                fill={PALETTE.gray}
-                frac={ticks}
-                align="center"
-                seed={seed + 20 + i}
-              />
-            )}
-          </React.Fragment>
-        ))}
-      {series.map((s: any, si: number) => {
-        const local = p(2 + si);
-        const pts = (s.points ?? []).map(map);
-        if (pts.length < 2 || local <= 0) return null;
-        const smooth = catmullRom(pts).map(
-          (q) => [q[0] + (rnd() - 0.5) * 0.3, q[1] + (rnd() - 0.5) * 0.3] as Pt,
-        );
+      {stroked([[x, zeroY], [x + w, zeroY]], axisP, PALETTE.ink, W * 0.95)}
+      {stroked([[zeroX, y + h], [zeroX, y]], axisP, PALETTE.ink, W * 0.95)}
+      {axisP > 0 && Array.from({ length: 5 }, (_, i) => {
+        const xv = xmin + (xs * i) / 4;
+        const yv = ymin + (ys * i) / 4;
+        const xp = x + (w * i) / 4;
+        const yp = y + h - (h * i) / 4;
         return (
-          <React.Fragment key={`s${si}`}>
-            {stroked(smooth, local, color(s.color ?? "blue"), W * 1.25)}
+          <React.Fragment key={`tick-${i}`}>
+            <Line x1={xp} y1={zeroY - 0.7} x2={xp} y2={zeroY + 0.7} stroke={PALETTE.ink} strokeWidth={0.35} />
+            <Line x1={zeroX - 0.7} y1={yp} x2={zeroX + 0.7} y2={yp} stroke={PALETTE.ink} strokeWidth={0.35} />
+            {i % 2 === 0 && (
+              <>
+                <RevealText text={fmt(xv)} at={[xp, Math.min(74, zeroY + 3.3)]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + i} />
+                <RevealText text={fmt(yv)} at={[Math.max(2, zeroX - 3.2), yp]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + 20 + i} />
+              </>
+            )}
           </React.Fragment>
         );
       })}
-      {labelP > 0 &&
-        series.map((s: any, si: number) =>
-          s.label ? (
-            <RevealText
-              key={`sl${si}`}
-              text={String(s.label)}
-              at={[x + w - 12, y + 2 + si * 4.2]}
-              size="s"
-              fill={color(s.color ?? "blue")}
-              frac={labelP}
-              seed={seed + 40 + si}
-              fitW={14}
-            />
-          ) : null,
-        )}
-      {markerP > 0 &&
-        (Array.isArray(op.markers) ? op.markers : []).slice(0, 6).map((m: any, i: number) => {
-          const [mx, my] = map(m.at);
-          return (
-            <G key={`m${i}`}>
-              <Circle cx={mx} cy={my} r={0.9} fill={color(m.color ?? "orange")} />
-              {m.label && (
-                <RevealText
-                  text={String(m.label)}
-                  at={[mx + 2, my - 3]}
-                  size="s"
-                  fill={color(m.color ?? "orange")}
-                  frac={markerP}
-                  seed={seed + 60 + i}
-                />
-              )}
-            </G>
-          );
-        })}
-      {titleP > 0 && op.title && (
-        <RevealText
-          text={op.title}
-          at={[x + w / 2, y - 5]}
-          size="m"
-          fill={PALETTE.ink}
-          frac={titleP}
-          align="center"
-          fitW={w * 0.9}
-          seed={seed + 80}
-        />
-      )}
-      {xlabelP > 0 && op.xlabel && (
-        <RevealText
-          text={op.xlabel}
-          at={[x + w / 2, y + h + 8.5]}
-          size="s"
-          fill={PALETTE.gray}
-          frac={xlabelP}
-          align="center"
-          seed={seed + 81}
-          fitW={w}
-        />
-      )}
-      {ylabelP > 0 && op.ylabel && (
-        <RevealText
-          text={op.ylabel}
-          at={[x - 2, y - 4]}
-          size="s"
-          fill={PALETTE.gray}
-          frac={ylabelP}
-          align="center"
-          seed={seed + 82}
-        />
-      )}
+      {series.map((s: any, i: number) => {
+        const pts = s.points.map(map);
+        const d = makeD(pts, dataP);
+        if (!d) return null;
+        return <Path key={`series-${i}`} d={d} stroke={color(s.color ?? (i === 0 ? "blue" : "purple"))} strokeWidth={W * 1.55} strokeLinecap="round" strokeLinejoin="round" fill="none" />;
+      })}
+      {(Array.isArray(op.markers) ? op.markers : []).slice(0, 8).map((m: any, i: number) => {
+        if (!Array.isArray(m.at)) return null;
+        const [mx, my] = map(m.at as Pt);
+        if (mx < x || mx > x + w || my < y || my > y + h) return null;
+        return (
+          <G key={`marker-${i}`}>
+            <Circle cx={mx} cy={my} r={1.25} fill={color(m.color ?? "orange")} />
+            {m.label && <RevealText text={String(m.label)} at={[mx + 2, my - 2.5]} size="s" fill={color(m.color ?? "orange")} frac={labelsP} seed={seed + 60 + i} />}
+          </G>
+        );
+      })}
+      {op.title && <RevealText text={String(op.title)} at={[x + w / 2, y - 5]} size="m" fill={PALETTE.ink} frac={labelsP} align="center" seed={seed + 80} fitW={w * 0.9} />}
+      {op.xlabel && <RevealText text={String(op.xlabel)} at={[x + w / 2, Math.min(74, y + h + 5.5)]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + 81} fitW={w} />}
+      {op.ylabel && <RevealText text={String(op.ylabel)} at={[x - 2, y - 4]} size="s" fill={PALETTE.gray} frac={labelsP} align="center" seed={seed + 82} />}
     </G>
   );
 }
 
-function renderOp(item: Item, frac: number): React.ReactNode {
+function pointAlong(points: Pt[], progress: number): Pt {
+  if (points.length < 2) return points[0] ?? [50, 38];
+  const lengths = points.slice(1).map((p, i) => Math.hypot(p[0] - points[i][0], p[1] - points[i][1]));
+  const total = lengths.reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return points[0];
+  let remaining = clamp01(progress) * total;
+  for (let i = 0; i < lengths.length; i++) {
+    const length = lengths[i];
+    if (remaining <= length || i === lengths.length - 1) {
+      const t = length > 0 ? clamp01(remaining / length) : 1;
+      return [
+        points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+        points[i][1] + (points[i + 1][1] - points[i][1]) * t,
+      ];
+    }
+    remaining -= length;
+  }
+  return points[points.length - 1];
+}
+
+function renderOp(item: Item, frac: number, onHotspotPress?: (id: string) => void, activeHotspot?: string | null): React.ReactNode {
   const o: any = item.op;
   const seed = item.seed;
   const rnd = mulberry32(seed);
@@ -472,6 +461,56 @@ function renderOp(item: Item, frac: number): React.ReactNode {
 
     case "line":
       return <G key={item.id}>{stroked(jitterSeg(rnd, o.from, o.to, 0.55), p(0), stroke)}</G>;
+
+    case "motion": {
+      const points = (o.points ?? []) as Pt[];
+      if (points.length < 2) return null;
+      const current = pointAlong(points, frac);
+      const path = points.map((point, index) =>
+        `${index === 0 ? "M" : "L"} ${point[0].toFixed(2)} ${point[1].toFixed(2)}`,
+      ).join(" ");
+      const c = color(o.color ?? "blue");
+      const r = Math.max(0.8, Math.min(3.5, Number(o.radius) || 1.8));
+      return (
+        <G key={item.id}>
+          {o.trail !== false && (
+            <Path d={path} stroke={c} strokeWidth={0.55} strokeDasharray="1.8 1.8" strokeLinecap="round" fill="none" opacity={0.38} />
+          )}
+          <Circle cx={current[0]} cy={current[1]} r={r * 1.9} fill={c} opacity={0.14} />
+          <Circle cx={current[0]} cy={current[1]} r={r} fill={c} />
+          {!!o.label && frac > 0.28 && (
+            <RevealText
+              text={String(o.label)}
+              at={[Math.min(94, current[0] + 3.2), Math.max(4, current[1] - 3.2)]}
+              size="s"
+              fill={c}
+              frac={clamp01((frac - 0.28) / 0.5)}
+              seed={seed + 3}
+            />
+          )}
+        </G>
+      );
+    }
+
+    case "scene": {
+      const duration = Math.max(1, Number(o.duration_ms) || 1);
+      return (
+        <G key={item.id}>
+          {(o.elements ?? []).map((element: any, index: number) => {
+            const childDuration = Math.max(1, Number(element.duration_ms) || 1);
+            const elapsed = frac * duration - Math.max(0, Number(element.at_ms) || 0);
+            const childFrac = clamp01(elapsed / childDuration);
+            if (childFrac <= 0) return null;
+            return renderOp(
+              { id: item.id + "-scene-" + index, seed: seed + (index + 1) * 37, op: element.op },
+              childFrac,
+              onHotspotPress,
+              activeHotspot,
+            );
+          })}
+        </G>
+      );
+    }
 
     case "arrow": {
       return (
@@ -604,6 +643,12 @@ function renderOp(item: Item, frac: number): React.ReactNode {
       });
       return <G key={item.id}>{rows}</G>;
     }
+
+    case "code":
+      return <CodeBlock key={item.id} op={o} frac={frac} t={tm} />;
+
+    case "plot3d":
+      return <Plot3dBlock key={item.id} op={o} frac={frac} t={tm} />;
 
     case "graph":
       return <GraphOp key={item.id} op={o} frac={frac} seed={seed} t={tm} />;
@@ -781,6 +826,24 @@ function renderOp(item: Item, frac: number): React.ReactNode {
       );
     }
 
+    case "hotspot": {
+      const [x, y] = o.at as Pt;
+      const selected = activeHotspot === item.id;
+      const c = color(o.color ?? "orange");
+      const label = String(o.label ?? "");
+      const labelW = Math.min(52, label.length * CHAR_W.s);
+      const labelX = x > 62 ? Math.max(2, x - 4 - labelW) : Math.min(98 - labelW, x + 4);
+      return (
+        <G key={item.id}>
+          <Circle cx={x} cy={y} r={selected ? 4.1 : 3.2} fill={c} opacity={0.13} />
+          <Circle cx={x} cy={y} r={2.2} fill="none" stroke={c} strokeWidth={selected ? 0.9 : 0.65} />
+          <Circle cx={x} cy={y} r={0.85} fill={c} />
+          <Circle cx={x} cy={y} r={5.5} fill="transparent" onPress={() => onHotspotPress?.(item.id)} />
+          <RevealText text={label} at={[labelX, Math.max(5, y - 3.5)]} size="s" fill={c} frac={1} seed={seed + 1} fitW={labelW} />
+        </G>
+      );
+    }
+
     case "dot": {
       const [x, y] = o.at;
       const r = 0.9 * p(0);
@@ -863,17 +926,25 @@ export function Board({
   width,
   height,
   paper = true,
+  onHotspotPress,
+  activeHotspot,
 }: {
   ops: Item[];
   fracOf: (item: Item) => number;
   width: number;
   height: number;
   paper?: boolean;
+  onHotspotPress?: (id: string) => void;
+  activeHotspot?: string | null;
 }) {
   return (
     <Svg width={width} height={height} viewBox={`0 0 ${LOGICAL_W} ${LOGICAL_H}`}>
       {paper && <Paper width={width} height={height} />}
-      {ops.map((item) => renderOp(item, fracOf(item)))}
+      {ops.map((item) => (
+        <OpBoundary key={item.id}>
+          <G>{renderOp(item, fracOf(item), onHotspotPress, activeHotspot)}</G>
+        </OpBoundary>
+      ))}
     </Svg>
   );
 }

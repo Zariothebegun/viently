@@ -127,9 +127,52 @@ export type Op =
       title?: string;
       color?: Ink;
     }
+  | {
+      op: "motion";
+      points: Pt[];
+      label?: string;
+      color?: Ink;
+      radius?: number;
+      trail?: boolean;
+      start_ms?: number;
+      duration_ms?: number;
+    }
+  | {
+      // Composite scene: each element has an independent start and duration.
+      op: "scene";
+      elements: { at_ms: number; duration_ms: number; op: Op }[];
+      start_ms?: number;
+      duration_ms: number;
+    }
+  | {
+      op: "code";
+      lines: string[];
+      focus?: number[];
+      lang?: string;
+      title?: string;
+      at?: Pt;
+      w?: number;
+      h?: number;
+    }
+  | {
+      op: "plot3d";
+      kind: "surface" | "ridgeline";
+      fn?: "gaussian" | "saddle" | "bowl" | "wave" | "ripple";
+      path?: Pt[];
+      marker?: { at: Pt; label?: string };
+      groups?: { label?: string; mean: number; spread: number; skew?: number; color?: Ink }[];
+      title?: string;
+      xlabel?: string;
+      ylabel?: string;
+      zlabel?: string;
+      at?: Pt;
+      w?: number;
+      h?: number;
+    }
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
   | { op: "dot"; at: Pt; label?: string; label_at?: Pt; color?: Ink }
+  | { op: "hotspot"; at: Pt; label: string; detail: string; color?: Ink }
   | { op: "erase"; id?: string }
   | { op: "clear" };
 
@@ -148,6 +191,9 @@ export type Check = {
 };
 
 export type Step = {
+  // Cada passo é uma página autónoma do feed vertical.
+  title?: string;
+  subtitle?: string;
   say: string;
   // versão escrita do passo, para a página (texto de ensino completo)
   write?: string;
