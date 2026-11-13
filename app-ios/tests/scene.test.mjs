@@ -4,9 +4,9 @@ import { test } from "node:test";
 import { buildModelHtml, buildPolyHtml } from "../src/three/scene.ts";
 
 function moduleSource(html) {
-  const match = html.match(/<script type="module">([\\s\\S]*?)<\\/script>/);
+  const match = html.match(/<script type="module">([\s\S]*?)<\/script>/);
   assert.ok(match, "generated HTML must contain a module script");
-  return match[1].replace(/^\\s*import .*?;\\s*$/gm, "");
+  return match[1].replace(/^\s*import .*?;\s*$/gm, "");
 }
 
 test("preset 3D module JavaScript is syntactically valid and inline mode is idle", () => {
@@ -14,8 +14,8 @@ test("preset 3D module JavaScript is syntactically valid and inline mode is idle
   const source = moduleSource(html);
   assert.doesNotThrow(() => new Script(source));
   assert.match(source, /let spin = !INLINE/);
-  assert.match(source, /function wake\\(\\)/);
-  assert.match(source, /if \\(frames === 1\\)/);
+  assert.match(source, /function wake\(\)/);
+  assert.match(source, /if \(frames === 1\)/);
 });
 
 test("Poly GLB module JavaScript is syntactically valid and inline mode does not spin", () => {
@@ -23,6 +23,6 @@ test("Poly GLB module JavaScript is syntactically valid and inline mode does not
   const source = moduleSource(html);
   assert.doesNotThrow(() => new Script(source));
   assert.match(source, /let spin = !INLINE/);
-  assert.match(source, /if \\(spin && !INLINE\\)/);
-  assert.doesNotMatch(source, /\\nframe\\(\\);/);
+  assert.match(source, /if \(spin && !INLINE\)/);
+  assert.doesNotMatch(source, /\nframe\(\);/);
 });
