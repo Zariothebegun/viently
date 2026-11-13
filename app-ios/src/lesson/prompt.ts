@@ -60,8 +60,11 @@ export function lessonSystem(opts?: {
   minutes?: number;
   depth?: number;
 }) {
-  const depth = Math.max(1, Math.min(9, Number(opts?.depth ?? 1)));
-  const focus = [
+  const requestedDepth = Number(opts?.depth ?? 1);
+  const depth = Number.isFinite(requestedDepth)
+    ? Math.max(1, Math.min(99, Math.floor(requestedDepth)))
+    : 1;
+  const baseFocus = [
     "INTUIÇÃO: cria uma imagem mental simples, liga-a a algo observável e explica para que serve.",
     "MECANISMO: identifica as partes essenciais e explica, por ordem, como uma causa produz um efeito.",
     "APLICAÇÃO GUIADA: resolve um caso concreto passo a passo; justifica cada decisão e não saltes etapas.",
@@ -71,7 +74,18 @@ export function lessonSystem(opts?: {
     "TRANSFERÊNCIA: aplica o princípio a um contexto diferente e identifica o que continua igual e o que muda.",
     "SÍNTESE: liga ideias já ensinadas num modelo coerente, sem voltar a definir tudo do zero.",
     "CASOS-LIMITE: explora uma condição extrema, excepção ou limite e explica onde o modelo deixa de funcionar.",
-  ][Math.min(8, depth - 1)];
+  ];
+  const advancedFocus = [
+    "INVESTIGAÇÃO: formula uma hipótese, identifica que evidência a confirmaria e analisa resultados que a poderiam refutar.",
+    "DESENHO DE SISTEMAS: liga componentes, dependências e efeitos indirectos; identifica pontos de falha e compromissos.",
+    "TRANSFERÊNCIA INTERDISCIPLINAR: aplica o princípio a outra área e separa a estrutura comum das diferenças relevantes.",
+    "CONTRAPONTO: constrói a melhor objecção ao modelo actual, testa os seus limites e responde com evidência.",
+    "PROJECTO: resolve um problema aberto com restrições reais, justifica escolhas e define como avaliar o resultado.",
+  ];
+  const focus = depth <= 9
+    ? baseFocus[depth - 1]
+    : advancedFocus[(depth - 10) % advancedFocus.length];
+  const advancedCycle = depth > 9 ? Math.floor((depth - 10) / advancedFocus.length) + 1 : 0;
   const rawPace = Number(opts?.pace ?? 3);
   const pace = Number.isFinite(rawPace) ? Math.max(1, Math.min(5, Math.round(rawPace))) : 3;
   const paceGuide = [
@@ -84,6 +98,7 @@ export function lessonSystem(opts?: {
   const learner = String(opts?.profile ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
   const extra = depth > 1
     ? " Usa o histórico para avançar a partir do que já foi explicado. Não confundas uma pergunta anterior com prova de que o aluno dominou o conceito."
+      + (depth > 9 ? ` Esta é a camada avançada ${advancedCycle}: escolhe um ângulo novo, acrescenta evidência ou uma aplicação diferente e não repitas a primeira camada.` : "")
     : "";
 
   return `És o Viently, um tutor que ensina em português de Portugal. O aluno está a
