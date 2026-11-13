@@ -49,7 +49,7 @@ test("new visual operations are sanitized and bounded", () => {
   ]);
   assert.equal(ops.length, 3);
   assert.equal(ops[0].lines.length, 16);
-  assert.ok(ops[0].lines.every((line) => line.length <= 64));
+  assert.ok(ops[0].lines.every((line) => line.length <= 52));
   assert.deepEqual(ops[0].focus, [2, 3]);
   assert.equal(ops[1].fn, "gaussian");
   assert.deepEqual(ops[1].path[0], [1, -1]);
