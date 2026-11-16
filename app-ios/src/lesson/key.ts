@@ -1,24 +1,53 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const KEY = "viently.openrouter.key";
+
+// Na web não existe SecureStore: a chave vive no AsyncStorage (localStorage),
+// e o sítio é servido só na máquina local, por isso não há exposição pública.
+const plainWeb = Platform.OS === "web";
+
+async function readStored(): Promise<string | null> {
+  if (plainWeb) return AsyncStorage.getItem(KEY);
+  return SecureStore.getItemAsync(KEY);
+}
+
+async function writeStored(value: string): Promise<void> {
+  if (plainWeb) {
+    await AsyncStorage.setItem(KEY, value);
+    return;
+  }
+  await SecureStore.setItemAsync(KEY, value);
+}
+
+async function deleteStored(): Promise<void> {
+  if (plainWeb) {
+    await AsyncStorage.removeItem(KEY);
+    return;
+  }
+  await SecureStore.deleteItemAsync(KEY);
+}
 
 // The BYOK key lives in the OS-backed secure store. The AsyncStorage read is
 // only a one-time migration for keys saved by older app versions.
 export async function loadKey(): Promise<string | null> {
+  const embedded = defaultKey();
   try {
-    const secure = await SecureStore.getItemAsync(KEY);
-    if (secure) return secure;
+    const stored = await readStored();
+    if (stored) return stored;
 
     const legacy = await AsyncStorage.getItem(KEY);
-    if (!legacy) return null;
+    if (!legacy) return embedded;
 
-    await SecureStore.setItemAsync(KEY, legacy);
+    if (!plainWeb) {
+      await SecureStore.setItemAsync(KEY, legacy);
+    }
     await AsyncStorage.removeItem(KEY);
     return legacy;
   } catch {
-    // Do not silently fall back to storing/using a plaintext key.
-    return null;
+    // Without a secure store the build-time key is still usable.
+    return embedded;
   }
 }
 
@@ -28,12 +57,12 @@ export async function saveKey(key: string): Promise<void> {
     await clearKey();
     return;
   }
-  await SecureStore.setItemAsync(KEY, value);
+  await writeStored(value);
   await AsyncStorage.removeItem(KEY);
 }
 
 export async function clearKey(): Promise<void> {
-  await SecureStore.deleteItemAsync(KEY);
+  await deleteStored();
   await AsyncStorage.removeItem(KEY);
 }
 
@@ -42,7 +71,9 @@ export function looksLikeKey(v: string): boolean {
   return t.startsWith("sk-or-") || t.startsWith("sk-");
 }
 
-// Não existe chave de fornecedor embutida na aplicação.
+// Chave fornecida no .env (EXPO_PUBLIC_OPENROUTER_KEY). Sem ela a app pede a
+// chave ao utilizador; com ela arranca já ligada.
 export function defaultKey(): string | null {
-  return null;
+  const value = process.env.EXPO_PUBLIC_OPENROUTER_KEY;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }

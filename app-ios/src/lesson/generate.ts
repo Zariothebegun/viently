@@ -10,6 +10,26 @@ const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
 const API_MODEL = process.env.EXPO_PUBLIC_API_MODEL;
 
+// API oficial do Gemini (AI Studio). Com chave no .env é o primeiro caminho:
+// responde em segundos, ao contrário do modelo gratuito do OpenRouter.
+const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY;
+const GEMINI_KEY_2 = process.env.EXPO_PUBLIC_GEMINI_KEY_2;
+const GEMINI_KEY_3 = process.env.EXPO_PUBLIC_GEMINI_KEY_3;
+const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-3-flash-preview";
+// Várias contas e vários modelos: a quota gratuita é por modelo e por conta,
+// por isso cada combinação é uma tentativa independente. Quando uma esgota
+// (429), a seguinte tem quota própria.
+const GEMINI_KEYS = [GEMINI_KEY, GEMINI_KEY_2, GEMINI_KEY_3]
+  .map((k) => (k ?? "").trim())
+  .filter((k, i, all) => !!k && all.indexOf(k) === i);
+const GEMINI_MODELS = [
+  // medido: 3.1-flash-lite responde em 4 a 7 s com JSON válido e texto longo;
+  // flash-lite-latest devolve 503 e o 3-flash-preview está sempre em 429.
+  "gemini-3.1-flash-lite",
+  GEMINI_MODEL,
+  "gemini-flash-lite-latest",
+].filter((m, i, all) => !!m && all.indexOf(m) === i);
+
 // Modelo por omissão. O "lightning" é o mais rápido dos gratuitos; os
 // seguintes só entram se ele estiver limitado ou falhar o JSON.
 export const DEFAULT_MODEL = API_MODEL || "nvidia/nemotron-3.5-lightning:free";
@@ -24,7 +44,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v8";
+const CACHE_KEY = "viently.lessons.v16";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -46,7 +66,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v8|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v16|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -489,17 +509,17 @@ export function parseLesson(raw: string): Lesson {
   // Formato actual: a página inteira num só objecto.
   const pageBoard = sanitizeOps(data.board)
     .filter((o) => o.op !== "title" && o.op !== "clear" && o.op !== "erase")
-    .slice(0, 10);
+    .slice(0, 12);
   // A clear one- or two-element diagram can be valid; destructive-only
   // boards were filtered above and must not count as teaching visuals.
   if (pageBoard.length >= 1) {
-    const say = String(data.say ?? "").replace(/\s+/g, " ").trim().slice(0, 420);
+    const say = String(data.say ?? "").replace(/\s+/g, " ").trim().slice(0, 950);
     const note = String(data.note ?? "")
       .replace(/\r/g, "")
       .replace(/[ \t]+/g, " ")
       .replace(/\n{2,}/g, "\n")
       .trim()
-      .slice(0, 700);
+      .slice(0, 1200);
     // resumo "Para lembrar" para fixar no fim da página
     const rc = data.recap;
     const rcTitle = String(rc?.title ?? "").trim().slice(0, 40) || "Para lembrar";
@@ -521,9 +541,9 @@ export function parseLesson(raw: string): Lesson {
           .filter((n: any) => n.label && n.value)
           .slice(0, 3)
       : [];
-    const example = String(data.example ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
-    const mw = String(data.mistake?.wrong ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
-    const mr = String(data.mistake?.right ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const example = String(data.example ?? "").replace(/\s+/g, " ").trim().slice(0, 360);
+    const mw = String(data.mistake?.wrong ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const mr = String(data.mistake?.right ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
     const mistake = mw && mr ? { wrong: mw, right: mr } : undefined;
     steps.push({
       say: say || note.replace(/\s*\n\s*/g, " "),
@@ -629,7 +649,7 @@ const LESSON_SCHEMA = {
       properties: { wrong: { type: "string" }, right: { type: "string" } },
     },
     say: { type: "string" },
-    note: { type: "string", maxLength: 700 },
+    note: { type: "string", maxLength: 1200 },
     recap: {
       type: "object",
       properties: {
@@ -749,6 +769,75 @@ async function callModel(
   }
 }
 
+// Gemini usa o mesmo prompt, mas o corpo e a resposta têm outro formato.
+async function callGemini(
+  model: string,
+  system: string,
+  input: GenerateInput,
+  mode: "json" | "none",
+  timeoutMs: number,
+  apiKey: string | null = GEMINI_KEY ?? null,
+): Promise<Lesson> {
+  if (!apiKey) throw new Error("Sem chave Gemini configurada.");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model,
+  )}:generateContent?key=${apiKey}`;
+  const contents = [
+    ...input.history.slice(-6).map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: String(m.content ?? "") }],
+    })),
+    { role: "user", parts: [{ text: input.question }] },
+  ];
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents,
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 8192,
+      ...(mode === "json" ? { responseMimeType: "application/json" } : {}),
+    },
+  };
+  let res: Response | null = null;
+  for (let tryIndex = 0; tryIndex < 3; tryIndex++) {
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
+        body: JSON.stringify(body),
+      });
+    } catch (e: any) {
+      clearTimeout(timer);
+      if (e?.name === "AbortError") {
+        throw new Error("O modelo demorou demasiado a responder. Tenta outra vez.");
+      }
+      throw e;
+    }
+    // 503/500 = modelo sobrecarregado; 429 = quota por minuto. Ambos passam.
+    if (![429, 500, 502, 503, 504].includes(res.status) || tryIndex === 2) break;
+    await new Promise((r) => setTimeout(r, 900 + tryIndex * 700));
+  }
+  if (!res) throw new Error("Sem resposta do Gemini.");
+
+  try {
+    if (!res.ok) {
+      const responseBody = await res.text().catch(() => "");
+      throw new HttpError(res.status, "Gemini " + res.status + ": " + responseBody.slice(0, 220));
+    }
+    const json = await res.json();
+    const text = (json?.candidates?.[0]?.content?.parts ?? [])
+      .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+      .join("");
+    if (!text.trim()) throw new Error("Resposta vazia do modelo.");
+    return parseLesson(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // só estes erros podem vir do formato da resposta; os outros não melhoram a
 // repetir o mesmo modelo, por isso passamos ao fallback seguinte
 const FORMAT_RETRY = new Set([400, 404, 422]);
@@ -770,28 +859,68 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   const deadline = Date.now() + 300000;
   let lastError: unknown = null;
 
-  // OpenRouter é o caminho principal; um endpoint compatível opcional
-  // pode funcionar como último fallback.
-  type Attempt = { model: string; endpoint: string; key: string | null };
+  // Gemini responde em segundos; OpenRouter é o fallback quando não há chave
+  // Gemini ou ela falha.
+  type Attempt = {
+    kind: "gemini" | "chat";
+    model: string;
+    endpoint: string;
+    key: string | null;
+  };
   const attempts: Attempt[] = [];
+  // Ponte local (Gemini web via cookies) primeiro: sem quota por minuto.
+  if (API_BASE) {
+    attempts.push({
+      kind: "chat",
+      model: API_MODEL || DEFAULT_MODEL,
+      endpoint: `${API_BASE}/chat/completions`,
+      key: input.key,
+    });
+  }
+  for (const apiKey of GEMINI_KEYS) {
+    for (const m of GEMINI_MODELS) {
+      attempts.push({ kind: "gemini", model: m, endpoint: "gemini", key: apiKey });
+    }
+  }
   const cloudKey = input.key;
   if (cloudKey) {
     const cloudModels = [input.model || DEFAULT_MODEL, ...FALLBACK_MODELS];
-    for (const m of cloudModels) attempts.push({ model: m, endpoint: ENDPOINT, key: cloudKey });
+    for (const m of cloudModels) {
+      attempts.push({ kind: "chat", model: m, endpoint: ENDPOINT, key: cloudKey });
+    }
   }
-  if (API_BASE) {
-    attempts.push({ model: API_MODEL || DEFAULT_MODEL, endpoint: `${API_BASE}/chat/completions`, key: input.key });
+  if (!attempts.length) {
+    attempts.push({ kind: "chat", model: DEFAULT_MODEL, endpoint: ENDPOINT, key: input.key });
   }
-  if (!attempts.length) attempts.push({ model: DEFAULT_MODEL, endpoint: ENDPOINT, key: input.key });
 
   for (const attempt of attempts) {
-    for (const mode of ["schema", "json", "none"] as Format[]) {
+    const modes: Format[] =
+      attempt.kind === "gemini" ? ["none", "json"] : ["json", "none"];
+    for (const mode of modes) {
       if (Date.now() > deadline) break;
       try {
         const budget = Math.max(20000, Math.min(150000, deadline - Date.now()));
         const localEp = API_BASE ? `${API_BASE}/chat/completions` : null;
-        const wait = localEp && attempt.endpoint === localEp ? Math.min(15000, budget) : budget;
-        const lesson = await callModel(attempt.model, system, input, mode, wait, attempt.endpoint, attempt.key);
+        const wait = localEp && attempt.endpoint === localEp ? Math.min(90000, budget) : budget;
+        const lesson =
+          attempt.kind === "gemini"
+            ? await callGemini(
+                attempt.model,
+                system,
+                input,
+                mode === "schema" ? "json" : mode,
+                Math.min(60000, budget),
+                attempt.key,
+              )
+            : await callModel(
+                attempt.model,
+                system,
+                input,
+                mode,
+                wait,
+                attempt.endpoint,
+                attempt.key,
+              );
         if (!lesson.steps.length) throw new Error("A aula ficou sem passos utilizáveis.");
         if (!lesson.suggestions?.length) {
           lesson.suggestions = ["Dá-me um exemplo concreto", "Porque é que isso acontece?"];

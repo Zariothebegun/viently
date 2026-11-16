@@ -352,9 +352,23 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     if (["box", "ellipse", "axes", "graph", "polygon", "notes", "text", "note", "title", "model3d", "scene", "hotspot", "code", "plot3d"].includes(kind)) {
       const bb = opBBox(op);
       if (bb) {
-        let est = (bb[2] - bb[0]) * (bb[3] - bb[1]);
+        // A moldura de opBBox inclui as etiquetas dos eixos; para gráficos conta
+        // só a área desenhada, senão um gráfico normal (84x60) excede o
+        // orçamento e a página fica sem gráfico nenhum.
+        const graphLike = kind === "graph" || kind === "axes";
+        const area: Box = graphLike
+          ? [
+              Number(op.at?.[0] ?? 10),
+              Number(op.at?.[1] ?? 20),
+              Number(op.at?.[0] ?? 10) + Number(op.w ?? 44),
+              Number(op.at?.[1] ?? 20) + Number(op.h ?? 30),
+            ]
+          : bb;
+        let est = (area[2] - area[0]) * (area[3] - area[1]);
         if (kind === "notes") est *= 0.6;
-        if (kind !== "title" && areaUsed + est > 5200) {
+        const bigOp = ["graph", "code", "plot3d", "model3d"].includes(kind);
+        const budget = bigOp ? 7200 : 5200;
+        if (kind !== "title" && areaUsed + est > budget) {
           droppedCount++;
           continue;
         }

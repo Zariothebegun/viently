@@ -195,18 +195,34 @@ export function wrapText(
   const maxChars = Math.max(1, Math.floor(limit / CHAR_W[size]));
   let line = "";
   for (const source of words) {
-    // Uma palavra técnica ou URL enorme também tem de caber no quadro.
-    const chunks = source.length > maxChars
-      ? source.match(new RegExp(".{1," + maxChars + "}", "g")) ?? [source]
-      : [source];
-    for (const word of chunks) {
-      const next = line ? line + " " + word : word;
-      if (line && next.length * CHAR_W[size] > limit) {
+    // Token enorme (URL, identificador): tem mesmo de ser cortado.
+    if (source.length >= maxChars * 3) {
+      if (line) {
         lines.push(line);
-        line = word;
-      } else {
-        line = next;
+        line = "";
       }
+      const chunks = source.match(new RegExp(".{1," + maxChars + "}", "g")) ?? [source];
+      lines.push(...chunks);
+      continue;
+    }
+    // Palavra maior do que a linha: fica sozinha com a sua largura natural.
+    // Cortá-la ao meio deformava as etiquetas dos desenhos
+    // ("Termorrece / ptores").
+    if (source.length > maxChars) {
+      if (line) {
+        lines.push(line);
+        line = "";
+      }
+      lines.push(source);
+      continue;
+    }
+    const word = source;
+    const next = line ? line + " " + word : word;
+    if (line && next.length * CHAR_W[size] > limit) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = next;
     }
   }
   if (line) lines.push(line);

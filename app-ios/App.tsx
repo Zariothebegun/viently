@@ -22,10 +22,12 @@ import {
   Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -144,14 +146,16 @@ function titleMs(text?: string): number {
   return Math.min(560, 120 + (text ?? "").length * TITLE_MS_PER_CHAR);
 }
 
-function geometry(w: number, h: number, hasQuiz: boolean): Geom {
+function geometry(w: number, h: number, hasQuiz: boolean, roomy = false): Geom {
   const bw = Math.min(w - 32, 440);
   // a página é uma só: o quadro pode ocupar mais altura do que quando havia
   // vários passos, sem empurrar a pergunta para fora do ecrã
   const ratio = hasQuiz ? 0.82 : 0.9;
   // O quadro ocupa uma faixa previsível do ecrã; o resto fica para ensinar,
   // sem scroll interno nem conteúdo escondido por baixo do composer.
-  const bh = Math.round(Math.min(bw * ratio, h * 0.31));
+  // Código e superfícies 3D precisam de mais altura: senão a última linha fica
+  // cortada pela borda do quadro.
+  const bh = Math.round(Math.min(bw * ratio, h * (roomy ? 0.42 : 0.31)));
   const boardX = Math.round((w - bw) / 2);
   const boardY = 6 + HEAD_H;
   return { w, h, bw, bh, boardX, boardY };
@@ -225,7 +229,7 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
     <View style={s.cards}>
       {!!page.numbers?.length && (
         <View style={s.nums}>
-          {page.numbers.slice(0, compact ? 1 : 2).map((n, i) => (
+          {page.numbers.slice(0, 3).map((n, i) => (
             <View key={i} style={s.numPill}>
               <Text style={s.numLabel}>{n.label}</Text>
               <Text style={s.numValue}>{n.value}</Text>
@@ -236,29 +240,20 @@ function PageCards({ page, compact = false }: { page: StepPage; compact?: boolea
       {!!page.example && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Exemplo. </Text>
-          {page.example.slice(0, compact ? 90 : 120)}
+          {page.example}
         </Text>
       )}
-      {!compact && !!page.mistake && (
+      {!!page.mistake && (
         <Text style={s.cardLine}>
           <Text style={s.cardKey}>Erro comum. </Text>
-          {page.mistake.wrong.slice(0, 55)} <Text style={s.cardKey}>Certo: </Text>
-          {page.mistake.right.slice(0, 55)}
+          {page.mistake.wrong} <Text style={s.cardKey}>Certo: </Text>
+          {page.mistake.right}
         </Text>
       )}
-      {!!page.mistake && (compact ? !page.example : true) && (
-        <Text style={s.cardLine}>
-          <Text style={s.cardKey}>Atenção. </Text>
-          {page.mistake.wrong.slice(0, 60)} <Text style={s.cardKey}>Certo: </Text>
-          {page.mistake.right.slice(0, 60)}
-        </Text>
-      )}
-      {!!page.recap && (compact
-        ? !page.example && !page.mistake
-        : !page.mistake) && (
+      {!!page.recap && (
         <View style={s.recapBox}>
           <Text style={s.recapTitle}>{page.recap.title}</Text>
-          {page.recap.lines.slice(0, 1).map((l, i) => (
+          {page.recap.lines.slice(0, 3).map((l, i) => (
             <Text key={i} style={s.recapLine}>
               • {l}
             </Text>
@@ -351,6 +346,95 @@ const PagePaper = memo(function PagePaper() {
   );
 });
 
+// O quadro ocupa toda a altura que sobra depois do texto. Assim o desenho
+// cresce em vez de deixar meia página vazia em cima da barra de pergunta.
+function BoardArea({
+  page,
+  bw,
+  fallbackH,
+  pageHeight,
+  fracOf,
+  onHotspotPress,
+  activeHotspot,
+  modelOp,
+  modelVisible,
+  modelOpen,
+  onOpenModel,
+}: {
+  page: StepPage;
+  bw: number;
+  fallbackH: number;
+  pageHeight: number;
+  fracOf: (item: Item) => number;
+  onHotspotPress?: (id: string) => void;
+  activeHotspot?: string | null;
+  modelOp?: ModelOp;
+  modelVisible?: number;
+  modelOpen?: ModelOpen | null;
+  onOpenModel?: (v: ModelOpen) => void;
+}) {
+  const boardH = Math.max(
+    Math.max(90, fallbackH),
+    Math.min(Math.round((bw * 75) / 100), Math.round(pageHeight * 0.52)),
+  );
+  const bh = boardH;
+
+  const box = modelOp
+    ? (() => {
+        const b = opBBox(modelOp) ?? [10, 2, 88, 42];
+        // react-native-svg uses xMidYMid meet by default: a mesma escala e
+        // centragem têm de ser usadas para colar o 3D ao desenho 2D.
+        const scale = Math.min(bw / 100, bh / 75);
+        const offsetX = (bw - 100 * scale) / 2;
+        const offsetY = (bh - 75 * scale) / 2;
+        return {
+          left: offsetX + b[0] * scale,
+          top: offsetY + b[1] * scale,
+          width: Math.max(1, (b[2] - b[0]) * scale),
+          height: Math.max(1, (b[3] - b[1]) * scale),
+        };
+      })()
+    : null;
+
+  return (
+    <View
+      style={{
+        height: boardH,
+        width: bw,
+        alignSelf: "center",
+      }}
+    >
+      <Board
+        ops={boardOps(page)}
+        fracOf={fracOf}
+        width={bw}
+        height={bh}
+        paper={false}
+        onHotspotPress={onHotspotPress}
+        activeHotspot={activeHotspot}
+      />
+      {!!modelOp && !!box && (
+        <View
+          style={{
+            position: "absolute",
+            left: box.left,
+            top: box.top,
+            width: box.width,
+            height: box.height,
+            overflow: "hidden",
+          }}
+        >
+          <LiveModel
+            op={modelOp}
+            visible={modelOpen ? 0 : (modelVisible ?? 0)}
+            onOpen={(v: ModelOpen) => onOpenModel?.(v)}
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // Páginas que estão só à espera do gesto: desenho já completo, sem animação.
 // Ficam memorizadas para o ticker da página activa não as redesenhar.
 const StaticStep = memo(
@@ -376,15 +460,13 @@ const StaticStep = memo(
           </View>
         ) : (
           <>
-            <View style={{ width: g.bw, height: g.bh, alignSelf: "center" }}>
-              <Board
-                ops={boardOps(page)}
-                fracOf={() => 1}
-                width={g.bw}
-                height={g.bh}
-                paper={false}
-              />
-            </View>
+            <BoardArea
+              page={page}
+              bw={g.bw}
+              fallbackH={g.bh}
+              pageHeight={h}
+              fracOf={() => 1}
+            />
             {page.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
             <View style={s.lineBox}>
               {!!page.line && <NoteText text={page.line} />}
@@ -413,6 +495,7 @@ export default function App() {
   const [pages, setPages] = useState<Page[]>([HERO]);
   const [active, setActive] = useState(0);
   const [layout, setLayout] = useState({ w: 390, h: 700 });
+  const win = useWindowDimensions();
   const [live, setLive] = useState<Live>(null);
   const [tick, setTick] = useState(0);
   const [lineN, setLineN] = useState(0);
@@ -466,6 +549,11 @@ export default function App() {
     activeRef.current = i;
     setActive(i);
   };
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    document.body.style.background = "#eceae1";
+  }, []);
 
   useEffect(() => {
     loadKey().then(setKey);
@@ -782,8 +870,16 @@ export default function App() {
     const title = (lesson.title?.trim() || opts.root || "Aula").slice(0, 48);
     const steps = lesson.steps;
     const prepared = steps.flatMap((step, sourceIndex) => {
-      const content = (step.write || step.say || "").replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "").trim();
-      return paginateLessonText(content).map((chunk, chunkIndex) => ({
+      const content = [step.say, step.write]
+        .map((v) => String(v ?? "").trim())
+        .filter(Boolean)
+        .join("\n")
+        .replace(/^(Olá|Boa tarde|Boa noite|Então|Vamos lá)[^.!?]*[.!?]\s*/i, "")
+        // Os modelos às vezes devolvem os pontos numerados todos na mesma linha.
+        // Sem esta quebra a página virava um bloco único ilegível.
+        .replace(/([.!?;:])\s+(\d{1,2})\.\s+/g, "$1\n$2. ")
+        .trim();
+      return paginateLessonText(content, 560).map((chunk, chunkIndex) => ({
         step, sourceIndex, chunk, chunkIndex,
       }));
     });
@@ -795,9 +891,7 @@ export default function App() {
       // explicação longa num único passo, ela é dividida sem cortar conteúdo.
       const firstChunk = chunkIndex === 0;
       const before: Item[] = [];
-      const layoutResult = firstChunk
-        ? applyOpsDetailed(before, step.board as Op[], nextSeed)
-        : { items: before, dropped: 0 };
+      const layoutResult = applyOpsDetailed(before, step.board as Op[], nextSeed);
       const next = layoutResult.items;
       const beforeIds = new Set(before.map((it) => it.id));
       const lastPage = pageIndex === prepared.length - 1;
@@ -811,7 +905,7 @@ export default function App() {
         items: next,
         layoutWarning: layoutResult.dropped > 0,
         newIds: next.filter((it) => !beforeIds.has(it.id)).map((it) => it.id),
-        suggestions: !lesson.check && lastPage ? lesson.suggestions ?? [] : [],
+        suggestions: lastPage ? lesson.suggestions ?? [] : [],
         state: "idle",
         title: firstChunk
           ? step.title?.trim() || (sourceIndex === 0 ? title : `${title} · ${sourceIndex + 1}`)
@@ -854,6 +948,10 @@ export default function App() {
         quizOnly: true,
       });
     }
+    out.forEach((page, index) => {
+      page.stepIndex = index;
+      page.stepCount = out.length;
+    });
     return out;
   }
 
@@ -1205,27 +1303,6 @@ export default function App() {
     : undefined;
   const modelOp = modelItem?.op as ModelOp | undefined;
   const modelVisible = modelItem ? fracOf(modelItem) : 0;
-  const modelBox = modelOp
-    ? (() => {
-        const b = opBBox(modelOp) ?? [10, 2, 88, 42];
-        // react-native-svg uses xMidYMid meet by default. The logical
-        // 100x75 board is letterboxed inside the wider phone rectangle;
-        // map the 3D overlay using that same scale/offset or it floats over
-        // neighbouring drawings.
-        const scale = Math.min(g.bw / 100, g.bh / 75);
-        const contentW = 100 * scale;
-        const contentH = 75 * scale;
-        const offsetX = (g.bw - contentW) / 2;
-        const offsetY = (g.bh - contentH) / 2;
-        return {
-          left: offsetX + b[0] * scale,
-          top: offsetY + b[1] * scale,
-          width: Math.max(1, (b[2] - b[0]) * scale),
-          height: Math.max(1, (b[3] - b[1]) * scale),
-        };
-      })()
-    : null;
-
   const headerTopic = page.kind === "hero" ? "viently" : topicFrom(page.root);
   const working = page.kind === "step" && page.state === "drawing";
 
@@ -1312,7 +1389,12 @@ export default function App() {
   );
 
   const renderStep = (pg: StepPage) => {
-    const gg = geometry(layout.w, layout.h, !!pg.check);
+    const gg = geometry(
+      layout.w,
+      layout.h,
+      !!pg.check,
+      pg.items.some((it: any) => it.op.op === "code" || it.op.op === "plot3d"),
+    );
     const showSuggestions =
       pg.state === "done" &&
       pg.stepIndex === pg.stepCount - 1 &&
@@ -1337,51 +1419,50 @@ export default function App() {
           </Text>
         </View>
 
-        {!pg.quizOnly && <View style={{ width: gg.bw, height: gg.bh, alignSelf: "center" }}>
-          <Board
-            ops={boardOps(pg)}
+        {!pg.quizOnly && (
+          <BoardArea
+            page={pg}
+            bw={gg.bw}
+            fallbackH={gg.bh}
+            pageHeight={layout.h}
             fracOf={fracOf}
-            width={gg.bw}
-            height={gg.bh}
-            paper={false}
             onHotspotPress={setActiveHotspot}
             activeHotspot={activeHotspot}
+            modelOp={modelOp}
+            modelVisible={modelVisible}
+            modelOpen={modelOpen}
+            onOpenModel={setModelOpen}
           />
-          {!!modelOp && !!modelBox && (
-            <View
-              style={{
-                position: "absolute",
-                left: modelBox.left,
-                top: modelBox.top,
-                width: modelBox.width,
-                height: modelBox.height,
-                overflow: "hidden",
-              }}
-            >
-              <LiveModel op={modelOp} visible={modelOpen ? 0 : modelVisible} onOpen={setModelOpen} />
-            </View>
-          )}
-        </View>}
+        )}
 
         {!pg.quizOnly && pg.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
-        {!pg.quizOnly && <View style={[s.lineBox, { maxHeight: 290 }]}>
-          {!!activeHotspot && (() => {
-            const hit = pg.items.find((item) => item.id === activeHotspot);
-            if (!hit || hit.op.op !== "hotspot") return null;
-            return (
-              <View style={{ backgroundColor: "#edf1fa", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 }}>
-                <Text style={{ color: INK, fontFamily: "Quicksand_700Bold", fontSize: 13 }}>{hit.op.label}</Text>
-                <Text style={{ color: BODY, fontFamily: "Quicksand_500Medium", fontSize: 12.5, lineHeight: 18, marginTop: 2 }}>{hit.op.detail}</Text>
-              </View>
-            );
-          })()}
-          {visibleLine ? (
-            <NoteText text={visibleLine} />
-          ) : (
-            <View style={s.linePlaceholder} />
-          )}
-          {pg.state === "done" && <PageCards page={pg} compact />}
-        </View>}
+        {!pg.quizOnly && (
+          <View style={[s.lineBox, { maxHeight: Math.round(layout.h * 0.50) }]}>
+            <ScrollView
+              showsVerticalScrollIndicator
+              bounces={false}
+              style={{ flexGrow: 1 }}
+              contentContainerStyle={{ paddingBottom: 14 }}
+            >
+              {!!activeHotspot && (() => {
+                const hit = pg.items.find((item) => item.id === activeHotspot);
+                if (!hit || hit.op.op !== "hotspot") return null;
+                return (
+                  <View style={{ backgroundColor: "#edf1fa", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 8 }}>
+                    <Text style={{ color: INK, fontFamily: "Quicksand_700Bold", fontSize: 13 }}>{hit.op.label}</Text>
+                    <Text style={{ color: BODY, fontFamily: "Quicksand_500Medium", fontSize: 12.5, lineHeight: 18, marginTop: 2 }}>{hit.op.detail}</Text>
+                  </View>
+                );
+              })()}
+              {visibleLine ? (
+                <NoteText text={visibleLine} />
+              ) : (
+                <View style={s.linePlaceholder} />
+              )}
+              {pg.state === "done" && <PageCards page={pg} compact />}
+            </ScrollView>
+          </View>
+        )}
 
         {!!pg.check && (
           <View style={s.quiz}>
@@ -1451,8 +1532,24 @@ export default function App() {
     (i) => i >= 0 && i < pages.length,
   );
 
+  // No browser uma coluna do tamanho de um telefone: o feed foi desenhado
+  // para 390 pontos, e esticado a 1440 parte-se todo.
+  const frameW = Math.min(win.width, 560);
+  const webShell =
+    Platform.OS === "web"
+      ? ({
+          flexGrow: 0,
+          flexShrink: 0,
+          flexBasis: "auto",
+          width: frameW,
+          height: win.height,
+          marginLeft: Math.max(0, (win.width - frameW) / 2),
+          boxShadow: "0 0 70px rgba(38,51,75,0.14)",
+        } as const)
+      : null;
+
   return (
-    <View style={s.root}>
+    <View style={[s.root, webShell]}>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={{ flex: 1, backgroundColor: "#faf9f6" }}>
         <View style={s.header}>
@@ -1717,7 +1814,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 3,
     minHeight: 54,
-    maxHeight: 250,
+    flexGrow: 1,
     flexShrink: 1,
     overflow: "hidden",
   },
@@ -1791,7 +1888,7 @@ const s = StyleSheet.create({
     lineHeight: 14,
   },
 
-  bottomArea: { flex: 1, justifyContent: "flex-end", paddingBottom: 6 },
+  bottomArea: { flexGrow: 0, flexShrink: 0, justifyContent: "flex-end", paddingBottom: 6 },
 
   quiz: {
     marginHorizontal: 16,
