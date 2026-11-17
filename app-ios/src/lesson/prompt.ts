@@ -67,29 +67,10 @@ faz um diagrama 2D claro e completo. O 3D não é obrigatório.
    - "labels": 2 a 4 partes visíveis, em português, 1 a 2 palavras cada.
    - NÃO desenhes texto, setas ou callouts à volta do 3D: as labels acompanham
      a rotação e o resto ficava por cima do modelo.
-3. "shapes": cena feita de formas simples (sphere, box, cylinder, cone, torus,
-   ring, plane, arrow) e animações. Serve quando mover ou posicionar formas
-   simples EXPLICA a ideia e não existe preset nem modelo real:
-   órbitas, fluxo por um tubo, partículas e temperatura, forças (arrow),
-   ondas, empilhar/camadas, antes e depois, comparar tamanhos.
-   - Objectos: máx. 16. "id" curto e único; "pos" [x,y,z] entre -6 e 6; "size" é
-     o diâmetro/aresta (número ou [x,y,z], 0.05 a 4); "color" como no 2D;
-     "opacity" 0.1–1 (útil para camadas e interiores); "wire":true para
-     contorno; "label" (até 22 caracteres) e "note" (frase que ensina, ao tocar).
-     "arrow" aponta para cima (+y) com comprimento size[1]; roda com "rot" (graus).
-   - Animações ("anims", máx. 24), sempre sobre um "target" que existe:
-     spin (axis, speed = voltas/s) · orbit (around = id de outro objecto, ou
-     center [x,y,z]; speed = voltas/s) · bounce (axis, amp, speed) ·
-     pulse (amp relativa, speed) · move (path = lista de pontos; duration_ms) ·
-     fade (to_opacity, duration_ms) · color (to_color, duration_ms).
-     "at_ms" atrasa o início: usa-o para contar a história por ordem
-     (primeiro isto, depois aquilo). move/fade/color acontecem uma vez e ficam
-     no estado final; "loop":true faz vai-e-volta.
-   - Escolhe a animação que mostra a causa, não a que enfeita: se a explicação
-     precisa de movimento, anima; se não precisa, deixa a cena parada.
-   - "camera": iso (por defeito), front, side ou top. "ground":true desenha um chão.
-   - "caption": uma frase que diz o que o aluno deve reparar.
-   - Cada objecto com "label" ou "note" deve ensinar uma parte da ideia.
+3. "shapes": o sistema monta a cena 3D sozinho numa segunda chamada, a partir
+   do campo "visual". Não escrevas model3d nem descrevas a cena no board: se
+   "visual" for "3d", deixa livre a faixa x 8–76 / y 3–43 e desenha o resto
+   do quadro à volta dessa área (texto, setas, notas, gráfico).
 4. Tema abstracto (inflação, sintaxe, história, filosofia): sem 3D — esquema 2D.
 `;
 
@@ -163,7 +144,7 @@ ESTRUTURA DO JSON
   "recap": {"title": "O essencial", "lines": ["ideia-chave", "consequência prática", "quando falha"]},
   "check": {"prompt": "pergunta que testa compreensão", "options": ["A", "B", "C"], "answer_index": 0, "explanation": "porque é essa a resposta"},
   "board": [<5 a 10 operações visuais; para o interior/movimento de objectos usa
-             model3d com model:"shapes" (3 a 8 primitivas + anims); em temas de
+             a cena 3D (tratada automaticamente, não a escrevas); em temas de
              código/processo inclui code e/ou plot3d>],
   "suggestions": ["pergunta de continuação 1", "pergunta de continuação 2"]
 }

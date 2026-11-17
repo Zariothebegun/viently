@@ -25,7 +25,7 @@ export function ShapesStage({ spec }: { spec: ShapesSpec }) {
   }, [html, fade]);
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={StyleSheet.absoluteFill}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: fade }]}>
         <iframe
           srcDoc={html}
@@ -36,7 +36,7 @@ export function ShapesStage({ spec }: { spec: ShapesSpec }) {
             width: "100%",
             height: "100%",
             background: "transparent",
-            pointerEvents: "none",
+            pointerEvents: "auto",
           }}
         />
       </Animated.View>

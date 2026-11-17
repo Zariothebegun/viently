@@ -153,6 +153,17 @@ export function LiveModel({
 
 const styles = StyleSheet.create({
   fill: { width: "100%", height: "100%" },
+  badgeBtn: {
+    position: "absolute",
+    right: 6,
+    top: 6,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    backgroundColor: "rgba(255,255,255,0.85)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#d8d4c8",
+  },
   badge: {
     position: "absolute",
     top: 4,

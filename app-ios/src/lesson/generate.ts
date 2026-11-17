@@ -45,7 +45,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v19";
+const CACHE_KEY = "viently.lessons.v21";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -67,7 +67,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v19|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v21|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -604,7 +604,9 @@ export function parseLesson(raw: string): Lesson {
         .filter((v: string) => v.length > 1)
         .slice(0, 3)
     : [];
+  const visualRaw = String(data.visual ?? "").toLowerCase();
   return {
+    visual: visualRaw.startsWith("3") ? "3d" : visualRaw.startsWith("2") ? "2d" : undefined,
     title: data.title ? String(data.title).slice(0, 48) : undefined,
     // o subtítulo é uma frase completa: corta no fim da última frase que cabe,
     // nunca a meio de uma palavra
@@ -843,6 +845,118 @@ async function callGemini(
   }
 }
 
+
+// Segunda chamada, focada: escrever SÓ a cena 3D. O pedido grande de uma vez
+// fazia o modelo cortar a cena a meio (5 a 8 peças em vez das 12 a 30 pedidas)
+// ou devolver JSON inválido; aqui a única tarefa é geometria.
+const SHAPES_SYSTEM = [
+  "Desenhas uma cena 3D didáctica. Respondes APENAS com um objecto JSON.",
+  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso","ground":true}.',
+  "Cada objecto: {id, shape, parent?, pos:[x,y,z], size:number|[x,y,z], rot?:[x,y,z], color, opacity?, mirror?:'x'|'z'|'xz', label?, note?}.",
+  "Formas: sphere, box, rbox, cylinder, capsule, cone, torus, ring, plane, arrow, group.",
+  "Regras: 12 a 16 peças (nem menos nem mais); JSON compacto, numa só linha;",
+  "(1 unidade ≈ 1 metro); usa group + parent para o conjunto e mirror para as peças",
+  "simétricas; rótulos em português (≤22 caracteres) só nas 4 a 8 peças que a",
+  "explicação usa, cada uma com note que ensina; animações spin/orbit/bounce/pulse",
+  "para o que é contínuo e move/fade/color com at_ms para contar por ordem.",
+  "Nada de texto fora do JSON.",
+].join(" ");
+
+function extractObject(text: string): any | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+async function askShapes(prompt: string, deadline: number): Promise<any | null> {
+  const targets: Array<() => Promise<string>> = [];
+
+  if (API_BASE) {
+    const url = `${API_BASE}/chat/completions`;
+    targets.push(async () => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: API_MODEL || "gemini-web",
+          temperature: 0.5,
+          messages: [
+            { role: "system", content: SHAPES_SYSTEM },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
+      if (!res.ok) throw new Error(`bridge ${res.status}`);
+      const json: any = await res.json();
+      return String(json?.choices?.[0]?.message?.content ?? "");
+    });
+  }
+
+  for (const apiKey of GEMINI_KEYS.slice(0, 2)) {
+    for (const model of ["gemini-3.1-flash-lite", "gemini-flash-lite-latest"]) {
+      targets.push(async () => {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: SHAPES_SYSTEM }] },
+              contents: [{ role: "user", parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.5, maxOutputTokens: 6144 },
+            }),
+          },
+        );
+        if (!res.ok) throw new Error(`gemini ${res.status}`);
+        const json: any = await res.json();
+        return (json?.candidates?.[0]?.content?.parts ?? [])
+          .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+          .join("");
+      });
+    }
+  }
+
+  for (const run of targets) {
+    if (Date.now() > deadline) break;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 25000);
+      const text = await run();
+      clearTimeout(timer);
+      const obj = extractObject(text);
+      if (obj) return obj;
+    } catch {
+      /* tenta o próximo */
+    }
+  }
+  return null;
+}
+
+// Junta a cena à página (uma só model3d, no primeiro passo).
+function attachScene(lesson: Lesson, raw: any, title?: string): boolean {
+  const spec = sanitizeShapes(raw);
+  if (!spec || !spec.objects.length) return false;
+  const step = lesson.steps[0];
+  if (!step) return false;
+  if ((step.board ?? []).some((o: any) => o.op === "model3d")) return false;
+  const op: any = {
+    op: "model3d",
+    model: "shapes",
+    shapes: spec,
+    at: [10, 4],
+    w: 78,
+    h: 40,
+    title: title ? String(title).slice(0, 40) : undefined,
+  };
+  step.board = [op, ...(step.board ?? [])];
+  return true;
+}
+
 // só estes erros podem vir do formato da resposta; os outros não melhoram a
 // repetir o mesmo modelo, por isso passamos ao fallback seguinte
 const FORMAT_RETRY = new Set([400, 404, 422]);
@@ -929,6 +1043,24 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
                 attempt.key,
               );
         if (!lesson.steps.length) throw new Error("A aula ficou sem passos utilizáveis.");
+
+        // A página pedida em 3D mas ainda sem cena: pede-se a cena à parte,
+        // com um pedido pequeno e só de geometria.
+        const firstBoard = lesson.steps[0]?.board ?? [];
+        if (lesson.visual === "3d" && !firstBoard.some((o) => o.op === "model3d")) {
+          const raw = await askShapes(
+            [
+              `Página: "${lesson.title ?? input.question}"`,
+              lesson.subtitle ?? "",
+              String(lesson.steps[0]?.say ?? "").slice(0, 900),
+              `Monta a cena 3D que explica esta ideia. Pedido original do aluno: ${input.question}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            deadline,
+          );
+          if (raw) attachScene(lesson, raw, lesson.title);
+        }
         if (!lesson.suggestions?.length) {
           lesson.suggestions = ["Dá-me um exemplo concreto", "Porque é que isso acontece?"];
         }

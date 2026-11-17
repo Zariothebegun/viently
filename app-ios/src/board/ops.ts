@@ -212,6 +212,8 @@ export type Step = {
 
 export type Lesson = {
   title?: string;
+  // decisão do modelo: esta página ensina com 3D ou com esquema 2D
+  visual?: "3d" | "2d";
   // linha por baixo do título, à maneira das páginas do Clicky
   subtitle?: string;
   // continuações recomendadas para a página seguinte (2, curtas)

@@ -37,7 +37,7 @@ export function ShapesStage({ spec }: { spec: ShapesSpec }) {
     .slice(0, 6);
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={StyleSheet.absoluteFill}>
       {failed && (
         <View style={s.fallback}>
           <Text style={s.fallbackTxt}>{names.length ? names.join(" · ") : "cena 3D"}</Text>

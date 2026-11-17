@@ -269,7 +269,7 @@ if (renderer) {
         maxNdc = Math.max(maxNdc, Math.abs(q.x) + rx, Math.abs(q.y) + ry);
       });
       if (!(maxNdc > 0.02)) return;
-      fitDist = fitDist * (maxNdc / 0.86);
+      fitDist = fitDist * (maxNdc / 0.8);
     }
     updateCamera();
   }
