@@ -44,7 +44,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v23";
+const CACHE_KEY = "viently.lessons.v24";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -66,7 +66,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v23|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v24|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -837,6 +837,8 @@ const SHAPES_SYSTEM = [
   "simétricas; rótulos em português (≤22 caracteres) só nas 4 a 8 peças que a",
   "explicação usa, cada uma com note que ensina; animações spin/orbit/bounce/pulse",
   "para o que é contínuo e move/fade/color com at_ms para contar por ordem.",
+  "Enquadramento: o objecto principal ocupa 60% a 80% da cena; nenhuma seta ou",
+  "etiqueta pode ser maior do que metade dele; no máximo 6 etiquetas, curtas.",
   "Nada de texto fora do JSON.",
 ].join(" ");
 

@@ -257,7 +257,7 @@ if (renderer) {
     // Enquadramento por eixos (largura e altura) em vez de uma esfera única:
     // uma cena larga e baixa ficava minúscula no meio da caixa.
     const bsz = bb.getSize(new THREE.Vector3());
-    const pad = INLINE ? 1.16 : 1.08;
+    const pad = INLINE ? 1.06 : 1.03;
     const distH = ((Math.max(bsz.x, bsz.z) * 0.5 + 0.05) * pad) / Math.tan(hf / 2);
     const distV = ((bsz.y * 0.5 + 0.05) * pad) / Math.tan(vf / 2);
     const distSphere = (R / Math.sin(Math.min(vf, hf) / 2)) * pad;
@@ -282,12 +282,14 @@ if (renderer) {
       fitPts.forEach(function (fp) {
         const q = fp.p.clone().project(camera);
         const dist = Math.max(0.1, camera.position.distanceTo(fp.p));
-        const ry = fp.r / (dist * tanV);
+        // meia margem em vez do raio inteiro: com o raio completo o objecto
+        // ficava pequeno no meio da caixa
+        const ry = (fp.r * 0.55) / (dist * tanV);
         const rx = ry / Math.max(0.2, camera.aspect);
         maxNdc = Math.max(maxNdc, Math.abs(q.x) + rx, Math.abs(q.y) + ry);
       });
       if (!(maxNdc > 0.02)) return;
-      fitDist = fitDist * (maxNdc / 0.78);
+      fitDist = fitDist * (maxNdc / 0.9);
     }
     updateCamera();
   }
@@ -404,25 +406,49 @@ if (renderer) {
   }
   function layoutLabels() {
     const placed = [];
+    let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
     items.forEach(function (it) {
       if (!it.pill) return;
       if (!it.vis) { hideLabel(it); return; }
       it.g.getWorldPosition(proj);
       proj.project(camera);
       if (proj.z > 1) { hideLabel(it); return; }
-      placed.push({ it: it, ax: (proj.x * 0.5 + 0.5) * W, ay: (-proj.y * 0.5 + 0.5) * H });
+      const ax = (proj.x * 0.5 + 0.5) * W;
+      const ay = (-proj.y * 0.5 + 0.5) * H;
+      placed.push({ it: it, ax: ax, ay: ay });
     });
+    // silhueta aproximada: os pontos projectados de todas as peças visíveis.
+    // As pílulas vão para FORA desta caixa, nunca por cima do desenho.
+    items.forEach(function (it) {
+      if (!it.vis) return;
+      const q = it.g.getWorldPosition(new THREE.Vector3()).project(camera);
+      if (q.z > 1) return;
+      const x = (q.x * 0.5 + 0.5) * W, y = (-q.y * 0.5 + 0.5) * H;
+      const pad = Math.max(6, (it.reach || 0.2) * 26);
+      minX = Math.min(minX, x - pad); maxX = Math.max(maxX, x + pad);
+      minY = Math.min(minY, y - pad); maxY = Math.max(maxY, y + pad);
+    });
+    if (minX > maxX) { minX = 0; maxX = W; minY = 0; maxY = H; }
     placed.sort(function (a, b) { return a.ay - b.ay; });
     placed.forEach(function (p, i) {
       const w = p.it.pw || 40, h = p.it.ph || 20;
-      // a pílula fica acima do ponto e afastada para o lado mais livre
-      let x = clamp(p.ax + (p.ax < W / 2 ? -w - 14 : 14), 3, Math.max(3, W - w - 3));
-      let y = clamp(p.ay - h - 16, 3, Math.max(3, H - h - 22));
+      // lado mais próximo da peça, com folga para a linha-guia
+      const gap = 12;
+      let left = p.ax < (minX + maxX) / 2;
+      let x = left ? minX - w - gap : maxX + gap;
+      if (x < 4 || x + w > W - 4) {
+        left = !left;
+        x = left ? minX - w - gap : maxX + gap;
+      }
+      x = clamp(x, 4, Math.max(4, W - w - 4));
+      let y = clamp(p.ay - h / 2, 4, Math.max(4, H - h - 4));
+      // empurra para cima/baixo em vez de entrar na silhueta
       for (let j = 0; j < i; j++) {
         const q = placed[j];
         const qw = q.it.pw || 40, qh = q.it.ph || 20;
-        if (x < q.px + qw + 3 && x + w + 3 > q.px && y < q.py + qh + 2 && y + h + 2 > q.py) {
-          y = q.py + qh + 3;
+        if (x < q.px + qw + 4 && x + w + 4 > q.px && y < q.py + qh + 3 && y + h + 3 > q.py) {
+          y = q.py + qh + 5;
+          if (y + h > H - 4) y = Math.max(4, q.py - h - 5);
         }
       }
       p.px = x; p.py = y;
@@ -437,6 +463,7 @@ if (renderer) {
       p.it.dot.setAttribute("cx", p.ax); p.it.dot.setAttribute("cy", p.ay);
     });
   }
+
 
   let capShown = -1;
   function updateCaption(t) {
