@@ -216,9 +216,27 @@ if (renderer) {
   const R = Math.max(0.5, bb.getSize(new THREE.Vector3()).length() * 0.5 * 0.9);
 
   if (SPEC.ground) {
-    const grid = new THREE.GridHelper(14, 14, 0xcfcbbd, 0xe2dfd2);
-    grid.position.y = bb.min.y - 0.01;
-    scene.add(grid);
+    // Sombra de contacto suave: lê-se como desenho, não como chão de jogo.
+    const gs = bb.getSize(new THREE.Vector3());
+    const shadowGeo = new THREE.CircleGeometry(Math.max(1.1, Math.max(gs.x, gs.z) * 0.62), 48);
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 128;
+    const cx2 = cv.getContext("2d");
+    if (cx2) {
+      const rg = cx2.createRadialGradient(64, 64, 4, 64, 64, 62);
+      rg.addColorStop(0, "rgba(58,54,44,0.28)");
+      rg.addColorStop(0.55, "rgba(58,54,44,0.10)");
+      rg.addColorStop(1, "rgba(58,54,44,0)");
+      cx2.fillStyle = rg;
+      cx2.fillRect(0, 0, 128, 128);
+    }
+    const shadow = new THREE.Mesh(
+      shadowGeo,
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }),
+    );
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.set(center.x, bb.min.y + 0.002, center.z);
+    scene.add(shadow);
   }
 
   const PRESET = {
@@ -269,7 +287,7 @@ if (renderer) {
         maxNdc = Math.max(maxNdc, Math.abs(q.x) + rx, Math.abs(q.y) + ry);
       });
       if (!(maxNdc > 0.02)) return;
-      fitDist = fitDist * (maxNdc / 0.8);
+      fitDist = fitDist * (maxNdc / 0.78);
     }
     updateCamera();
   }
@@ -288,7 +306,9 @@ if (renderer) {
   const CONT = { spin: 1, orbit: 1, bounce: 1, pulse: 1 };
   let endTime = 0;
   SPEC.anims.forEach(function (a) {
-    if (CONT[a.type] && a.duration_ms === 0) endTime = Infinity;
+    // spin/orbit/bounce/pulse correm enquanto a página estiver aberta:
+    // a cena nunca "congela" a meio.
+    if (CONT[a.type]) endTime = Infinity;
     else endTime = Math.max(endTime, a.at_ms + a.duration_ms);
     if (a.loop && !CONT[a.type]) endTime = Infinity;
   });
@@ -330,7 +350,8 @@ if (renderer) {
         const it = byId[a.target];
         if (!it || t < a.at_ms) return;
         let lt = t - a.at_ms;
-        if (CONT[a.type] && a.duration_ms > 0) lt = Math.min(lt, a.duration_ms);
+        // sem clamp: um spin com "duration_ms" dava uma volta e parava
+        // no ar, que é exactamente o que se via; agora continua sempre.
         const turns = a.speed * lt / 1000;
         if (a.type === "spin") {
           it.g.rotation[a.axis] += turns * Math.PI * 2;
@@ -470,8 +491,8 @@ if (renderer) {
   });
   window.addEventListener("resize", resize);
 
-  // ---- interacção (só no painel grande) ----
-  if (!INLINE) {
+  // ---- interacção (painel grande e página) ----
+  if (true) {
     const el = renderer.domElement;
     const ptrs = new Map();
     let moved = 0, pinch = 0;

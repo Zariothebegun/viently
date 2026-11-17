@@ -130,7 +130,8 @@ test("generated HTML is valid JavaScript in both modes", () => {
   }
   const inline = moduleSource(buildShapesHtml(spec, "inline"));
   assert.match(inline, /const INLINE = true/);
-  assert.match(inline, /if \(!INLINE\)/, "touch handling only exists behind the modal guard");
+  // o toque existe nos dois modos: na página para rodar/aproximar, no painel também
+  assert.match(inline, /addEventListener\("pointerdown"/, "the scene accepts drag and pinch");
 });
 
 test("scene text cannot break out of the script tag", () => {
