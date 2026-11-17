@@ -27,6 +27,8 @@ const RAD = Math.PI / 180;
 
 const stage = document.getElementById("stage");
 const labelsEl = document.getElementById("labels");
+const linesEl = document.getElementById("lines");
+const capEl = document.getElementById("cap");
 
 let renderer = null;
 try {
@@ -63,6 +65,8 @@ if (renderer) {
     else if (kind === "box") g = new THREE.BoxGeometry(1, 1, 1);
     else if (kind === "cylinder") g = new THREE.CylinderGeometry(0.5, 0.5, 1, INLINE ? 18 : 28);
     else if (kind === "cone") g = new THREE.ConeGeometry(0.5, 1, INLINE ? 18 : 28);
+    else if (kind === "capsule") g = new THREE.CapsuleGeometry(0.35, 0.3, 6, INLINE ? 12 : 20);
+    else if (kind === "rbox") g = new RoundedBoxGeometry(1, 1, 1, INLINE ? 2 : 4, 0.14);
     else if (kind === "torus") { g = new THREE.TorusGeometry(0.5, 0.14, 12, INLINE ? 28 : 44); g.rotateX(Math.PI / 2); }
     else if (kind === "ring") { g = new THREE.RingGeometry(0.4, 0.5, 48); g.rotateX(-Math.PI / 2); }
     else { g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); }
@@ -75,20 +79,28 @@ if (renderer) {
   const meshes = [];
   let minY = 0;
 
+  const root = scene;
   SPEC.objects.forEach(function (o) {
     const flat = o.shape === "ring" || o.shape === "plane";
-    const mat = new THREE.MeshLambertMaterial({
+    const mat = new THREE.MeshStandardMaterial({
       color: PAL[o.color],
+      roughness: 0.55,
+      metalness: 0.12,
       transparent: o.opacity < 1,
       opacity: o.opacity,
       wireframe: o.wire,
-      depthWrite: o.opacity >= 1,
       side: flat ? THREE.DoubleSide : THREE.FrontSide
     });
+    // g: posição/rotação (os filhos ficam aqui); sc: escala só desta forma
     const g = new THREE.Group();
+    const sc = new THREE.Group();
+    g.add(sc);
     const baseScale = new THREE.Vector3(1, 1, 1);
+    let hull = null;
 
-    if (o.shape === "arrow") {
+    if (o.shape === "group") {
+      // sem malha: serve para mover/mostrar um conjunto de peças de uma vez
+    } else if (o.shape === "arrow") {
       // seta ao longo de +Y: comprimento = size[1], espessura = size[0]
       const len = Math.max(0.2, o.size[1]);
       const r = Math.max(0.04, o.size[0] * 0.12);
@@ -101,45 +113,54 @@ if (renderer) {
       tip.position.y = len / 2 - head / 2;
       shaft.userData.oid = o.id;
       tip.userData.oid = o.id;
-      g.add(shaft);
-      g.add(tip);
+      sc.add(shaft);
+      sc.add(tip);
       meshes.push(shaft, tip);
     } else {
       const m = new THREE.Mesh(geo(o.shape), mat);
       m.userData.oid = o.id;
-      g.add(m);
+      sc.add(m);
       meshes.push(m);
       if (o.shape === "plane") baseScale.set(o.size[0], 1, o.size[2]);
+      else if (o.shape === "capsule") baseScale.set(o.size[0] / 0.7, o.size[1], o.size[2] / 0.7);
       else baseScale.set(o.size[0], o.size[1], o.size[2]);
+      if (!flat && !o.wire) {
+        // contorno de tinta: casca invertida ligeiramente maior
+        hull = new THREE.Mesh(geo(o.shape), new THREE.MeshBasicMaterial({ color: 0x273247, side: THREE.BackSide }));
+        hull.scale.setScalar(1.045);
+        sc.add(hull);
+      }
     }
 
     const basePos = new THREE.Vector3(o.pos[0], o.pos[1], o.pos[2]);
     g.position.copy(basePos);
     g.rotation.set(o.rot[0] * RAD, o.rot[1] * RAD, o.rot[2] * RAD);
-    g.scale.copy(baseScale);
-    scene.add(g);
+    sc.scale.copy(baseScale);
+    const par = o.parent && byId[o.parent] ? byId[o.parent] : null;
+    (par ? par.g : scene).add(g);
 
-    const reach = o.shape === "arrow"
-      ? Math.max(o.size[1], o.size[0]) * 0.55
+    const reach = o.shape === "group" ? 0
+      : o.shape === "arrow" ? Math.max(o.size[1], o.size[0]) * 0.55
       : Math.max(o.size[0], o.size[1], o.size[2]) * 0.55;
-    minY = Math.min(minY, o.pos[1] - (o.shape === "arrow" ? 0 : o.size[1] * 0.5));
 
     const it = {
-      o: o, g: g, mat: mat, reach: reach,
+      o: o, g: g, sc: sc, mat: mat, hull: hull, reach: reach, par: par,
       basePos: basePos, baseScale: baseScale,
       baseRot: new THREE.Euler(o.rot[0] * RAD, o.rot[1] * RAD, o.rot[2] * RAD),
       baseColor: new THREE.Color(PAL[o.color]),
-      pill: null, pw: 0, ph: 0
+      op: o.opacity, eff: o.opacity, mayFade: o.opacity < 1,
+      pill: null, pw: 0, ph: 0, line: null, dot: null, vis: true
     };
     items.push(it);
     byId[o.id] = it;
   });
 
-  if (SPEC.ground) {
-    const grid = new THREE.GridHelper(12, 12, 0xcfcbbd, 0xe2dfd2);
-    grid.position.y = minY - 0.01;
-    scene.add(grid);
-  }
+  // materiais que podem ficar translúcidos (próprios, por fade, ou por herança do pai)
+  SPEC.anims.forEach(function (a) { if (a.type === "fade" && byId[a.target]) byId[a.target].mayFade = true; });
+  items.forEach(function (it) {
+    if (it.par && it.par.mayFade) it.mayFade = true;
+    it.mat.transparent = it.mayFade;
+  });
 
   // etiquetas: pílulas DOM projectadas, com uma passagem simples anti-sobreposição
   items.forEach(function (it) {
@@ -149,44 +170,56 @@ if (renderer) {
     d.textContent = it.o.label;
     labelsEl.appendChild(d);
     it.pill = d;
+    const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    ln.setAttribute("stroke", "#273247");
+    ln.setAttribute("stroke-width", "1.2");
+    ln.setAttribute("stroke-opacity", "0.7");
+    const dt = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dt.setAttribute("r", "2.6");
+    dt.setAttribute("fill", "#fffdf6");
+    dt.setAttribute("stroke", "#273247");
+    linesEl.appendChild(ln);
+    linesEl.appendChild(dt);
+    it.line = ln;
+    it.dot = dt;
   });
 
   // ---- enquadramento ----
-  const spheres = [];
-  items.forEach(function (it) { spheres.push({ p: it.basePos.clone(), r: it.reach, visible: true }); });
+  scene.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(scene);
+  if (bb.isEmpty()) bb.set(new THREE.Vector3(-1, -1, -1), new THREE.Vector3(1, 1, 1));
+  const wp = function (it) { return it.g.getWorldPosition(new THREE.Vector3()); };
+  // Pontos usados no enquadramento final (posições e trajectórias).
+  const fitPts = [];
+  items.forEach(function (it) { fitPts.push({ p: wp(it), r: Math.max(0.15, it.reach) }); });
   SPEC.anims.forEach(function (a) {
     const it = byId[a.target];
     if (!it) return;
+    const w0 = wp(it);
+    const grow = function (p, r) {
+      bb.expandByPoint(new THREE.Vector3(p.x - r, p.y - r, p.z - r));
+      bb.expandByPoint(new THREE.Vector3(p.x + r, p.y + r, p.z + r));
+    };
     if (a.type === "move" && a.path) {
-      a.path.forEach(function (p) { spheres.push({ p: new THREE.Vector3(p[0], p[1], p[2]), r: it.reach }); });
+      a.path.forEach(function (p) {
+        grow(new THREE.Vector3(w0.x + p[0] - it.basePos.x, w0.y + p[1] - it.basePos.y, w0.z + p[2] - it.basePos.z), it.reach);
+      });
     } else if (a.type === "orbit") {
-      const c = a.around && byId[a.around]
-        ? byId[a.around].basePos
-        : new THREE.Vector3(a.center[0], a.center[1], a.center[2]);
-      // A órbita é amostrada ao longo de toda a volta: enquadrar só o ponto de
-      // partida deixava a Lua sair do ecrã a meio do movimento.
-      const rad = Math.max(0.05, c.distanceTo(it.basePos));
-      const flat = Math.abs(it.basePos.y - c.y) < 1e-3;
-      for (let k = 0; k < 24; k++) {
-        const t = (k / 24) * Math.PI * 2;
-        spheres.push({
-          p: new THREE.Vector3(c.x + Math.cos(t) * rad, flat ? c.y : c.y + Math.sin(t) * rad * 0.35, c.z + Math.sin(t) * rad),
-          r: it.reach,
-        });
-      }
+      const ar = a.around ? byId[a.around] : null;
+      const c = ar ? wp(ar) : new THREE.Vector3(a.center[0], a.center[1], a.center[2]);
+      grow(c, c.distanceTo(w0) + it.reach);
     } else if (a.type === "bounce") {
-      spheres.push({ p: it.basePos.clone().setY(it.basePos.y + a.amp), r: it.reach });
+      grow(w0, it.reach + a.amp);
     }
   });
-  const bb = new THREE.Box3();
-  spheres.forEach(function (s) {
-    bb.expandByPoint(new THREE.Vector3(s.p.x - s.r, s.p.y - s.r, s.p.z - s.r));
-    bb.expandByPoint(new THREE.Vector3(s.p.x + s.r, s.p.y + s.r, s.p.z + s.r));
-  });
   const center = bb.getCenter(new THREE.Vector3());
-  const boxSize = bb.getSize(new THREE.Vector3());
-  let R = 0.5;
-  spheres.forEach(function (s) { R = Math.max(R, center.distanceTo(s.p) + s.r); });
+  const R = Math.max(0.5, bb.getSize(new THREE.Vector3()).length() * 0.5 * 0.9);
+
+  if (SPEC.ground) {
+    const grid = new THREE.GridHelper(14, 14, 0xcfcbbd, 0xe2dfd2);
+    grid.position.y = bb.min.y - 0.01;
+    scene.add(grid);
+  }
 
   const PRESET = {
     iso: [0.72, 1.12], front: [0, Math.PI / 2], side: [Math.PI / 2, Math.PI / 2], top: [0.0, 0.18]
@@ -203,15 +236,14 @@ if (renderer) {
     camera.updateProjectionMatrix();
     const vf = camera.fov * RAD;
     const hf = 2 * Math.atan(Math.tan(vf / 2) * camera.aspect);
-    // Enquadramento por eixos: a esfera envolvente deixava uma cena larga e
-    // baixa (Terra + Lua lado a lado) minúscula no meio da caixa.
-    const pad = INLINE ? 1.18 : 1.08;
-    const halfW = Math.max(boxSize.x, boxSize.z) * 0.5 + 0.05;
-    const halfH = boxSize.y * 0.5 + 0.05;
-    const distH = (halfW * pad) / Math.tan(hf / 2);
-    const distV = (halfH * pad) / Math.tan(vf / 2);
+    // Enquadramento por eixos (largura e altura) em vez de uma esfera única:
+    // uma cena larga e baixa ficava minúscula no meio da caixa.
+    const bsz = bb.getSize(new THREE.Vector3());
+    const pad = INLINE ? 1.16 : 1.08;
+    const distH = ((Math.max(bsz.x, bsz.z) * 0.5 + 0.05) * pad) / Math.tan(hf / 2);
+    const distV = ((bsz.y * 0.5 + 0.05) * pad) / Math.tan(vf / 2);
     const distSphere = (R / Math.sin(Math.min(vf, hf) / 2)) * pad;
-    fitDist = Math.min(distSphere, Math.max(distH, distV) + boxSize.z * 0.5);
+    fitDist = Math.min(distSphere, Math.max(distH, distV) + Math.min(bsz.x, bsz.y, bsz.z) * 0.5);
     calibrate();
     items.forEach(function (it) {
       if (it.pill) { it.pw = it.pill.offsetWidth; it.ph = it.pill.offsetHeight; }
@@ -220,26 +252,23 @@ if (renderer) {
     wake();
   }
 
-  // Ajuste final pela projecção real: olha para os objectos visíveis e afasta
-  // ou aproxima até preencherem ~85% do ecrã. É o que evita cenas minúsculas
-  // no meio da caixa, seja qual for a geometria que o modelo inventou.
+  // Ajuste final pela projecção real: se algum ponto da cena (ou da sua
+  // trajectória) sai do quadro, afasta; se enche pouco, aproxima.
   function calibrate() {
-    const vf = (camera.fov * RAD);
+    const vf = camera.fov * RAD;
     for (let pass = 0; pass < 2; pass++) {
       updateCamera();
       camera.updateMatrixWorld(true);
       const tanV = Math.tan(vf / 2);
       let maxNdc = 0;
-      spheres.forEach(function (sp) {
-        const p = sp.p.clone().project(camera);
-        // meia-largura do objecto nessa profundidade, em NDC
-        const dist = Math.max(0.1, camera.position.distanceTo(sp.p));
-        const ry = sp.r / (dist * tanV);
+      fitPts.forEach(function (fp) {
+        const q = fp.p.clone().project(camera);
+        const dist = Math.max(0.1, camera.position.distanceTo(fp.p));
+        const ry = fp.r / (dist * tanV);
         const rx = ry / Math.max(0.2, camera.aspect);
-        maxNdc = Math.max(maxNdc, Math.abs(p.x) + rx, Math.abs(p.y) + ry);
+        maxNdc = Math.max(maxNdc, Math.abs(q.x) + rx, Math.abs(q.y) + ry);
       });
       if (!(maxNdc > 0.02)) return;
-      // 0.86 = margem para as etiquetas e para a borda do cartão
       fitDist = fitDist * (maxNdc / 0.86);
     }
     updateCamera();
@@ -264,6 +293,8 @@ if (renderer) {
     if (a.loop && !CONT[a.type]) endTime = Infinity;
   });
 
+  SPEC.captions.forEach(function (c) { if (endTime !== Infinity) endTime = Math.max(endTime, c.at_ms + 600); });
+
   function rotate(v, axis, ang) {
     const c = Math.cos(ang), s = Math.sin(ang);
     let x = v.x, y = v.y, z = v.z;
@@ -287,9 +318,9 @@ if (renderer) {
   function applyAnims(t) {
     items.forEach(function (it) {
       it.g.position.copy(it.basePos);
-      it.g.scale.copy(it.baseScale);
+      it.sc.scale.copy(it.baseScale);
       it.g.rotation.copy(it.baseRot);
-      it.mat.opacity = it.o.opacity;
+      it.op = it.o.opacity;
       it.mat.color.copy(it.baseColor);
     });
     // 1.ª passagem: tudo menos órbitas (as órbitas seguem o centro já actualizado)
@@ -318,7 +349,7 @@ if (renderer) {
           it.g.position[a.axis] += v;
         } else if (a.type === "pulse") {
           const k = 1 + a.amp * Math.sin(turns * Math.PI * 2);
-          it.g.scale.multiplyScalar(k);
+          it.sc.scale.multiplyScalar(k);
         } else if (a.type === "move" && a.path) {
           const u = progress(a, lt);
           const pts = [it.basePos].concat(a.path.map(function (p) { return new THREE.Vector3(p[0], p[1], p[2]); }));
@@ -327,36 +358,45 @@ if (renderer) {
           it.g.position.lerpVectors(pts[i], pts[i + 1], seg - i);
         } else if (a.type === "fade") {
           const u = progress(a, lt);
-          it.mat.transparent = true;
-          it.mat.depthWrite = false;
-          it.mat.opacity = it.o.opacity + (a.to_opacity - it.o.opacity) * u;
+          it.op = it.o.opacity + (a.to_opacity - it.o.opacity) * u;
         } else if (a.type === "color") {
           const u = progress(a, lt);
           it.mat.color.copy(it.baseColor).lerp(tmp2.setHex(PAL[a.to_color]), u);
         }
       });
     }
+    // opacidade efectiva herda a do pai (os pais vêm sempre antes dos filhos)
+    items.forEach(function (it) {
+      it.eff = it.op * (it.par ? it.par.eff : 1);
+      it.vis = it.eff > 0.02;
+      it.mat.opacity = it.eff;
+      it.mat.depthWrite = it.eff >= 0.98;
+      it.sc.visible = it.vis;
+      if (it.hull) it.hull.visible = it.eff >= 0.6;
+    });
   }
 
   // ---- etiquetas ----
   const proj = new THREE.Vector3();
+  function hideLabel(it) {
+    it.pill.style.opacity = "0"; it.line.style.display = "none"; it.dot.style.display = "none";
+  }
   function layoutLabels() {
     const placed = [];
     items.forEach(function (it) {
       if (!it.pill) return;
-      proj.copy(it.g.position);
-      proj.y += it.reach * 1.05;
+      if (!it.vis) { hideLabel(it); return; }
+      it.g.getWorldPosition(proj);
       proj.project(camera);
-      if (proj.z > 1) { it.pill.style.opacity = "0"; return; }
-      const sx = (proj.x * 0.5 + 0.5) * W;
-      const sy = (-proj.y * 0.5 + 0.5) * H;
-      placed.push({ it: it, x: sx, y: sy });
+      if (proj.z > 1) { hideLabel(it); return; }
+      placed.push({ it: it, ax: (proj.x * 0.5 + 0.5) * W, ay: (-proj.y * 0.5 + 0.5) * H });
     });
-    placed.sort(function (a, b) { return a.y - b.y; });
+    placed.sort(function (a, b) { return a.ay - b.ay; });
     placed.forEach(function (p, i) {
       const w = p.it.pw || 40, h = p.it.ph || 20;
-      let x = clamp(p.x - w / 2, 3, Math.max(3, W - w - 3));
-      let y = clamp(p.y - h - 4, 3, Math.max(3, H - h - 3));
+      // a pílula fica acima do ponto e afastada para o lado mais livre
+      let x = clamp(p.ax + (p.ax < W / 2 ? -w - 14 : 14), 3, Math.max(3, W - w - 3));
+      let y = clamp(p.ay - h - 16, 3, Math.max(3, H - h - 22));
       for (let j = 0; j < i; j++) {
         const q = placed[j];
         const qw = q.it.pw || 40, qh = q.it.ph || 20;
@@ -367,7 +407,25 @@ if (renderer) {
       p.px = x; p.py = y;
       p.it.pill.style.transform = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
       p.it.pill.style.opacity = "1";
+      const ex = clamp(p.ax, x, x + w);
+      const ey = p.ay > y + h ? y + h : y;
+      p.it.line.style.display = "";
+      p.it.dot.style.display = "";
+      p.it.line.setAttribute("x1", ex); p.it.line.setAttribute("y1", ey);
+      p.it.line.setAttribute("x2", p.ax); p.it.line.setAttribute("y2", p.ay);
+      p.it.dot.setAttribute("cx", p.ax); p.it.dot.setAttribute("cy", p.ay);
     });
+  }
+
+  let capShown = -1;
+  function updateCaption(t) {
+    if (!capEl) return;
+    let k = -1;
+    for (let i = 0; i < SPEC.captions.length; i++) if (SPEC.captions[i].at_ms <= t) k = i;
+    if (k === capShown) return;
+    capShown = k;
+    capEl.textContent = k >= 0 ? SPEC.captions[k].text : "";
+    capEl.style.opacity = k >= 0 ? "1" : "0";
   }
 
   // ---- ciclo de desenho ----
@@ -390,6 +448,7 @@ if (renderer) {
       updateCamera();
       renderer.render(scene, camera);
       layoutLabels();
+      updateCaption(t);
     } catch (e) {
       post({ type: "error", message: "não consegui desenhar a cena" });
       return;
@@ -471,7 +530,7 @@ if (renderer) {
     window.__setSpin = function (on) { spin = !!on; dirty = true; wake(); };
     window.__reset = function () {
       az = start[0]; pol = start[1]; zoom = 1;
-      t0 = 0; select(null);
+      t0 = 0; capShown = -1; select(null);
       dirty = true; wake();
     };
     window.__setExplode = function () {};
@@ -502,6 +561,14 @@ export function buildShapesHtml(spec: ShapesSpec, mode: ShapesMode = "modal"): s
   body { -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent; }
   #stage { position:absolute; inset:0; touch-action:none; }
   #stage canvas { display:block; width:100% !important; height:100% !important; }
+  #lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+  #cap {
+    position:absolute; left:50%; bottom:4px; transform:translateX(-50%); max-width:92%;
+    padding:3px 10px; border-radius:10px; text-align:center; opacity:0; transition:opacity .25s ease;
+    background:rgba(255,253,246,0.94); border:1px solid rgba(45,47,54,0.22);
+    font-family:"Bradley Hand","Chalkboard SE","Marker Felt",-apple-system,cursive;
+    font-size:${font}px; line-height:${lineH}px; color:#23242a; pointer-events:none;
+  }
   #labels { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
   .pill {
     position:absolute; top:0; left:0; opacity:0; max-width:46%;
@@ -521,13 +588,19 @@ export function buildShapesHtml(spec: ShapesSpec, mode: ShapesMode = "modal"): s
 </head>
 <body>
 <div id="stage"></div>
+<svg id="lines"></svg>
 <div id="labels"></div>
+<div id="cap"></div>
 ${inline ? "" : `<div id="boot">a preparar a cena…</div>`}
 <script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
 </script>
 <script type="module">
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 ${body}
 </script>
 <script>

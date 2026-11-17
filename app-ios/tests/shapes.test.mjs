@@ -24,7 +24,7 @@ test("an empty or malformed scene is rejected so the page falls back to 2D", () 
 });
 
 test("objects are bounded, ids are unique and coordinates are clamped", () => {
-  const many = Array.from({ length: 40 }, (_, i) => ({ id: "x", shape: "box", pos: [999, -999, NaN], size: [99, 0, "a"] }));
+  const many = Array.from({ length: 80 }, (_, i) => ({ id: "x", shape: "box", pos: [999, -999, NaN], size: [99, 0, "a"] }));
   const spec = sanitizeShapes({ objects: many });
   assert.equal(spec.objects.length, SHAPE_LIMITS.objects);
   assert.equal(new Set(spec.objects.map((o) => o.id)).size, spec.objects.length);
@@ -148,4 +148,60 @@ test("scene text cannot break out of the script tag", () => {
 test("an unusable scene produces a page that reports the error instead of throwing", () => {
   const html = buildShapesHtml({ objects: [], anims: [], camera: "iso", ground: false });
   assert.match(html, /cena 3D inválida/);
+});
+
+test("mirror creates symmetric copies that share the animation", () => {
+  const spec = sanitizeShapes({
+    objects: [{ id: "roda", shape: "cylinder", pos: [1.3, 0.3, 0.9], mirror: "xz", label: "Roda" }],
+    anims: [{ target: "roda", type: "move", path: [[1.3, 1, 0.9]] }],
+  });
+  assert.equal(spec.objects.length, 4);
+  const pos = spec.objects.map((o) => o.pos.join(","));
+  assert.deepEqual(new Set(pos), new Set(["1.3,0.3,0.9", "-1.3,0.3,0.9", "1.3,0.3,-0.9", "-1.3,0.3,-0.9"]));
+  assert.equal(spec.objects.filter((o) => o.label).length, 1, "only the original is labelled");
+  assert.equal(spec.anims.length, 4);
+  assert.ok(spec.anims.some((a) => a.path[0].join(",") === "-1.3,1,-0.9"), "paths are mirrored too");
+});
+
+test("parent must exist earlier and children keep it", () => {
+  const spec = sanitizeShapes({
+    objects: [
+      { id: "a", shape: "group", parent: "b" },
+      { id: "b", shape: "box", parent: "a" },
+      { id: "c", shape: "box", parent: "b" },
+      { id: "d", shape: "box", parent: "d" },
+    ],
+  });
+  const by = Object.fromEntries(spec.objects.map((o) => [o.id, o.parent]));
+  assert.equal(by.a, undefined, "forward reference is dropped");
+  assert.equal(by.b, "a");
+  assert.equal(by.c, "b");
+  assert.equal(by.d, undefined, "no self parent");
+});
+
+test("hidden objects, captions and the new shapes are accepted", () => {
+  const spec = sanitizeShapes({
+    objects: [{ id: "s", shape: "rbox", opacity: 0 }, { id: "t", shape: "capsule" }, { id: "g", shape: "group" }],
+    captions: [{ at_ms: 3000, text: "depois" }, { at_ms: 0, text: "primeiro" }, { at_ms: 1, text: "" }],
+    anims: [{ target: "s", type: "fade", to_opacity: 1 }],
+  });
+  assert.equal(spec.objects[0].opacity, 0);
+  assert.deepEqual(spec.captions.map((c) => c.text), ["primeiro", "depois"]);
+  assert.equal(spec.anims[0].to_opacity, 1);
+});
+
+test("the example in the tutor prompt is a rich, valid scene", async () => {
+  const { lessonSystem } = await import("../src/lesson/prompt.ts");
+  const prompt = lessonSystem({});
+  const start = prompt.indexOf('{"op":"model3d","model":"shapes"');
+  const end = prompt.indexOf('\n  {"op":"axes"', start);
+  assert.ok(start > 0 && end > start, "example present");
+  const ops = sanitizeOps([JSON.parse(prompt.slice(start, end).trim())]);
+  const op = ops.find((o) => o.op === "model3d");
+  assert.ok(op, "example survives sanitizeOps");
+  assert.ok(op.shapes.objects.length >= 15, "example is detailed: " + op.shapes.objects.length);
+  assert.ok(op.shapes.anims.length >= 6 && op.shapes.captions.length >= 3);
+  for (const mode of ["inline", "modal"]) {
+    assert.doesNotThrow(() => new Script(moduleSource(buildShapesHtml(op.shapes, mode))));
+  }
 });

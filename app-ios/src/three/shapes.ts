@@ -14,7 +14,10 @@ export type ShapeKind =
   | "torus"
   | "ring"
   | "plane"
-  | "arrow";
+  | "arrow"
+  | "capsule"
+  | "rbox"
+  | "group";
 
 export type ShapeInk =
   | "ink"
@@ -31,6 +34,8 @@ export type Vec3 = [number, number, number];
 export type ShapeObject = {
   id: string;
   shape: ShapeKind;
+  // posição relativa a este objecto (herda movimento, rotação e fade)
+  parent?: string;
   pos: Vec3;
   // escala por eixo (esfera usa o raio no x)
   size: Vec3;
@@ -83,11 +88,14 @@ export type ShapesSpec = {
   camera: "iso" | "front" | "side" | "top";
   ground: boolean;
   caption?: string;
+  // frases que acompanham a animação: a última com at_ms <= tempo fica visível
+  captions: { at_ms: number; text: string }[];
 };
 
 export const SHAPE_LIMITS = {
-  objects: 16,
-  anims: 24,
+  objects: 48,
+  anims: 48,
+  captions: 6,
   coord: 6,
   sizeMin: 0.05,
   sizeMax: 4,
@@ -101,6 +109,7 @@ export const SHAPE_LIMITS = {
 
 const KINDS: readonly ShapeKind[] = [
   "sphere", "box", "cylinder", "cone", "torus", "ring", "plane", "arrow",
+  "capsule", "rbox", "group",
 ];
 const INKS: readonly ShapeInk[] = [
   "ink", "blue", "red", "green", "orange", "purple", "gray", "yellow",
@@ -172,27 +181,56 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
 
   const objects: ShapeObject[] = [];
   const seen = new Set<string>();
+  const copies: Record<string, { id: string; sx: number; sz: number }[]> = {};
+  const uniqueId = (base: string) => {
+    let id = base;
+    while (seen.has(id)) id = `${base.slice(0, 20)}_${objects.length + 1}`;
+    seen.add(id);
+    return id;
+  };
   const list = Array.isArray(r.objects) ? r.objects : [];
   for (const item of list) {
     if (objects.length >= L.objects) break;
     if (!item || typeof item !== "object") continue;
     if (!KINDS.includes(item.shape)) continue;
-    let id = cleanId(item.id) || `o${objects.length + 1}`;
-    // ids repetidos ficam únicos em vez de se perderem
-    while (seen.has(id)) id = `${id.slice(0, 20)}_${objects.length + 1}`;
-    seen.add(id);
-    objects.push({
+    const id = uniqueId(cleanId(item.id) || `o${objects.length + 1}`);
+    const parentId = cleanId(item.parent);
+    // o pai tem de existir antes: impede ciclos
+    const parent = parentId && parentId !== id && seen.has(parentId) ? parentId : undefined;
+    const obj: ShapeObject = {
       id,
       shape: item.shape,
+      parent,
       pos: vec(item.pos, [0, 0, 0], -L.coord, L.coord),
       size: sizeOf(item.size),
       rot: vec(item.rot, [0, 0, 0], -360, 360),
       color: ink(item.color, "blue"),
-      opacity: clamp(num(item.opacity, 1), 0.1, 1),
+      opacity: clamp(num(item.opacity, 1), 0, 1),
       wire: item.wire === true,
       label: text(item.label, L.label),
       note: text(item.note, L.note),
-    });
+    };
+    objects.push(obj);
+
+    // simetria: "x", "z" ou "xz" cria cópias espelhadas (rodas, asas, patas)
+    const m = item.mirror;
+    if (m === "x" || m === "z" || m === "xz") {
+      const flips: [string, number, number][] =
+        m === "x" ? [["x", -1, 1]] : m === "z" ? [["z", 1, -1]] : [["x", -1, 1], ["z", 1, -1], ["xz", -1, -1]];
+      copies[id] = [];
+      for (const [suffix, sx, sz] of flips) {
+        if (objects.length >= L.objects) break;
+        const cid = uniqueId(`${id.slice(0, 20)}_${suffix}`);
+        objects.push({
+          ...obj,
+          id: cid,
+          pos: [obj.pos[0] * sx, obj.pos[1], obj.pos[2] * sz],
+          rot: [sz < 0 ? -obj.rot[0] : obj.rot[0], obj.rot[1] * sx * sz, sx < 0 ? -obj.rot[2] : obj.rot[2]],
+          label: undefined,
+        });
+        copies[id].push({ id: cid, sx, sz });
+      }
+    }
   }
   if (!objects.length) return null;
 
@@ -243,7 +281,7 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     }
 
     if (a.type === "fade") {
-      anim.to_opacity = clamp(num(a.to_opacity, 0.1), 0.1, 1);
+      anim.to_opacity = clamp(num(a.to_opacity, 0.1), 0, 1);
       if (anim.duration_ms < 300) anim.duration_ms = 1200;
     }
 
@@ -253,14 +291,32 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     }
 
     anims.push(anim);
+    // as cópias espelhadas fazem o mesmo movimento (caminho espelhado)
+    for (const c of copies[target] ?? []) {
+      if (anims.length >= L.anims) break;
+      anims.push({
+        ...anim,
+        target: c.id,
+        path: anim.path?.map((p): Vec3 => [p[0] * c.sx, p[1], p[2] * c.sz]),
+      });
+    }
   }
+
+  const captions = (Array.isArray(r.captions) ? r.captions : [])
+    .map((c: any) => ({ at_ms: clamp(num(c?.at_ms, 0), 0, L.durationMax), text: text(c?.text, L.caption) }))
+    .filter((c: { text?: string }) => !!c.text)
+    .slice(0, L.captions)
+    .sort((a: any, b: any) => a.at_ms - b.at_ms) as { at_ms: number; text: string }[];
+  const caption = text(r.caption, L.caption);
+  if (!captions.length && caption) captions.push({ at_ms: 0, text: caption });
 
   return {
     objects,
     anims,
     camera: CAMERAS.includes(r.camera) ? r.camera : "iso",
     ground: r.ground === true,
-    caption: text(r.caption, L.caption),
+    caption,
+    captions,
   };
 }
 
