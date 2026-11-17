@@ -19,6 +19,10 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
   {"op":"notes","at":[66,18],"title":"...","lines":["...","..."]}
   {"op":"model3d","model":"cell|motor|atom|ram|bit","at":[16,4],"w":66,"h":40,"title":"..."}
   {"op":"model3d","model":"sandflow","query":"human heart","labels":["ventrículo","aorta"],"at":[10,4],"w":78,"h":40,"title":"Coração"}
+  {"op":"model3d","model":"shapes","at":[10,4],"w":78,"h":40,"title":"Órbita","camera":"iso","caption":"A Terra roda e orbita o Sol",
+   "objects":[{"id":"sol","shape":"sphere","pos":[0,0,0],"size":1.6,"color":"yellow","label":"Sol","note":"Centro do sistema: a gravidade dele prende a Terra."},
+              {"id":"terra","shape":"sphere","pos":[3.2,0,0],"size":0.7,"color":"blue","label":"Terra","note":"Uma volta ao Sol por ano."}],
+   "anims":[{"target":"terra","type":"orbit","around":"sol","axis":"y","speed":0.15},{"target":"terra","type":"spin","axis":"y","speed":0.8}]}
   {"op":"axes","at":[x,y],"w":40,"h":28,"xlabel":"...","ylabel":"..."}
   {"op":"graph","at":[x,y],"w":44,"h":30,"x_range":[0,4],"y_range":[0,100],
    "series":[{"label":"...","color":"blue","points":[[0,10],[1,40]]}],
@@ -52,7 +56,30 @@ faz um diagrama 2D claro e completo. O 3D não é obrigatório.
    - "labels": 2 a 4 partes visíveis, em português, 1 a 2 palavras cada.
    - NÃO desenhes texto, setas ou callouts à volta do 3D: as labels acompanham
      a rotação e o resto ficava por cima do modelo.
-3. Tema abstracto (inflação, sintaxe, história, filosofia): sem 3D — esquema 2D.
+3. "shapes": cena feita de formas simples (sphere, box, cylinder, cone, torus,
+   ring, plane, arrow) e animações. Serve quando mover ou posicionar formas
+   simples EXPLICA a ideia e não existe preset nem modelo real:
+   órbitas, fluxo por um tubo, partículas e temperatura, forças (arrow),
+   ondas, empilhar/camadas, antes e depois, comparar tamanhos.
+   - Objectos: máx. 16. "id" curto e único; "pos" [x,y,z] entre -6 e 6; "size" é
+     o diâmetro/aresta (número ou [x,y,z], 0.05 a 4); "color" como no 2D;
+     "opacity" 0.1–1 (útil para camadas e interiores); "wire":true para
+     contorno; "label" (até 22 caracteres) e "note" (frase que ensina, ao tocar).
+     "arrow" aponta para cima (+y) com comprimento size[1]; roda com "rot" (graus).
+   - Animações ("anims", máx. 24), sempre sobre um "target" que existe:
+     spin (axis, speed = voltas/s) · orbit (around = id de outro objecto, ou
+     center [x,y,z]; speed = voltas/s) · bounce (axis, amp, speed) ·
+     pulse (amp relativa, speed) · move (path = lista de pontos; duration_ms) ·
+     fade (to_opacity, duration_ms) · color (to_color, duration_ms).
+     "at_ms" atrasa o início: usa-o para contar a história por ordem
+     (primeiro isto, depois aquilo). move/fade/color acontecem uma vez e ficam
+     no estado final; "loop":true faz vai-e-volta.
+   - Escolhe a animação que mostra a causa, não a que enfeita: se a explicação
+     precisa de movimento, anima; se não precisa, deixa a cena parada.
+   - "camera": iso (por defeito), front, side ou top. "ground":true desenha um chão.
+   - "caption": uma frase que diz o que o aluno deve reparar.
+   - Cada objecto com "label" ou "note" deve ensinar uma parte da ideia.
+4. Tema abstracto (inflação, sintaxe, história, filosofia): sem 3D — esquema 2D.
 `;
 
 export function lessonSystem(opts?: {
@@ -296,9 +323,11 @@ Quando o tema é programação, algoritmo, dados ou automação:
 - code e plot3d ocupam bastante espaço: usa no máximo um destes por página, mais 2 ou 3 ops de apoio.
 
 3D
-- Usa no máximo UM model3d, apenas se existir um modelo adequado e ele ajudar
-  realmente a compreender a estrutura de um objecto físico.
-- Nunca uses 3D para conceitos abstractos, processos invisíveis ou só para
+- Usa no máximo UM model3d (preset, sandflow ou shapes), apenas se ele ajudar
+  realmente a compreender a estrutura ou o movimento de algo.
+- "shapes" também serve para processos com movimento espacial (órbitas, fluxos,
+  forças, camadas), desde que as formas simples representem bem a ideia.
+- Nunca uses 3D para conceitos abstractos sem forma espacial ou só para
   tornar a página mais vistosa. Nesses casos, cria um diagrama 2D rigoroso.
 - Se usares 3D, reserva a área x 8–76, y 3–43. Não coloques texto, setas,
   gráficos ou callouts nessa área.

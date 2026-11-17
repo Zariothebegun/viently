@@ -2,6 +2,7 @@
 // Espaço lógico: 100 (x) × 75 (y), y cresce para baixo.
 
 import type { SandflowModel } from "../three/sandflow";
+import type { ShapesSpec } from "../three/shapes";
 
 export type Pt = [number, number];
 
@@ -121,6 +122,9 @@ export type Op =
       ref?: SandflowModel;
       // nomes das partes que ficam colados ao modelo 3D
       labels?: string[];
+      // model "shapes": cena de primitivas (esferas, caixas…) com animações,
+      // descrita pelo modelo de linguagem e validada em sanitizeShapes
+      shapes?: ShapesSpec;
       at?: Pt;
       w?: number;
       h?: number;

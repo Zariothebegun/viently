@@ -1298,7 +1298,7 @@ export default function App() {
   const modelItem = stepPage
     ? stepPage.items.find((it) => {
         const op: any = it.op;
-        return op.op === "model3d" && (op.model in MODELS || op.model === "sandflow");
+        return op.op === "model3d" && (op.model in MODELS || op.model === "sandflow" || (op.model === "shapes" && !!op.shapes));
       })
     : undefined;
   const modelOp = modelItem?.op as ModelOp | undefined;

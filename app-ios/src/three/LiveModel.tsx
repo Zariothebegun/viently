@@ -12,6 +12,8 @@ import {
 import type { Op } from "../board/ops";
 import { PolyStage } from "./PolyStage";
 import { PresetStage } from "./PresetStage";
+import { ShapesStage } from "./ShapesStage";
+import type { ShapesSpec } from "./shapes";
 import { MODELS, type ModelId } from "./scene";
 import { resolveSandflow, type SandflowModel } from "./sandflow";
 
@@ -19,7 +21,8 @@ export type ModelOp = Extract<Op, { op: "model3d" }>;
 
 export type ModelOpen =
   | { kind: "preset"; id: ModelId }
-  | { kind: "sandflow"; model: SandflowModel; labels?: string[] };
+  | { kind: "sandflow"; model: SandflowModel; labels?: string[] }
+  | { kind: "shapes"; spec: ShapesSpec; title?: string };
 
 // imagens 3D pré-renderizadas dos presets locais
 
@@ -40,7 +43,8 @@ export function LiveModel({
   visible: number;
   onOpen: (target: ModelOpen) => void;
 }) {
-  const preset = op.model !== "sandflow" && op.model in MODELS;
+  const shapes = op.model === "shapes" && !!op.shapes;
+  const preset = !shapes && op.model !== "sandflow" && op.model in MODELS;
   const [model, setModel] = useState<SandflowModel | null>(op.ref ?? null);
   const [waiting, setWaiting] = useState(op.model === "sandflow" && !op.ref);
   const fade = useRef(new Animated.Value(0)).current;
@@ -64,17 +68,35 @@ export function LiveModel({
   }, [op.model, op.query, model]);
 
   useEffect(() => {
-    if (!preset && !model) return;
+    if (!preset && !shapes && !model) return;
     Animated.timing(fade, {
       toValue: 1,
       duration: 240,
       useNativeDriver: true,
     }).start();
-  }, [preset, model, fade]);
+  }, [preset, shapes, model, fade]);
 
   // O preset também respeita a timeline do quadro: não aparece antes
   // de o lápis chegar à zona reservada para o modelo.
   if (visible <= 0.015) return null;
+
+  if (shapes && op.shapes) {
+    const spec = op.shapes;
+    return (
+      <View style={styles.fill}>
+        <View style={StyleSheet.absoluteFill}>
+          <ShapesStage spec={spec} />
+        </View>
+        <Pressable
+          onPress={() => onOpen({ kind: "shapes", spec, title: op.title })}
+          style={styles.fill}
+        />
+        <View pointerEvents="none" style={styles.badge}>
+          <Text style={styles.badgeText}>3D</Text>
+        </View>
+      </View>
+    );
+  }
 
   if (preset) {
     // Na web a cena vive num iframe que engole os cliques; em vez de

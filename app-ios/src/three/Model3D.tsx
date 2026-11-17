@@ -4,6 +4,8 @@ import { WebView } from "react-native-webview";
 import { PAPER, PALETTE } from "../board/geom";
 import type { SandflowModel } from "./sandflow";
 import { MODELS, buildModelHtml, buildPolyHtml, type ModelId } from "./scene";
+import { buildShapesHtml } from "./shapesHtml";
+import type { ShapesSpec } from "./shapes";
 
 // o componente WebView muda de tipos entre versões; aqui só usamos
 // source/onMessage/injectJavaScript, por isso tratamos como componente livre
@@ -14,7 +16,8 @@ const STEPS = [0, 0.2, 0.4, 0.6, 0.8, 1];
 // um modelo local (com partes e rótulos) ou um GLB remoto do catálogo Sandflow
 export type ModelTarget =
   | { kind: "preset"; id: ModelId }
-  | { kind: "sandflow"; model: SandflowModel; labels?: string[] };
+  | { kind: "sandflow"; model: SandflowModel; labels?: string[] }
+  | { kind: "shapes"; spec: ShapesSpec; title?: string };
 
 /*
   Painel 3D.
@@ -23,19 +26,26 @@ export type ModelTarget =
   estado (explosão, raios X, rotação) e recebe a parte tocada.
 */
 export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () => void }) {
-  const isPoly = target.kind === "sandflow";
+  const isShapes = target.kind === "shapes";
+  // modelos sem partes explodíveis: GLB remoto e cenas de primitivas
+  const isPoly = target.kind === "sandflow" || isShapes;
   const html = useMemo(
     () =>
-      target.kind === "sandflow"
-        ? buildPolyHtml(target.model.glb, target.labels ?? [], "modal")
-        : buildModelHtml(target.id),
+      target.kind === "shapes"
+        ? buildShapesHtml(target.spec, "modal")
+        : target.kind === "sandflow"
+          ? buildPolyHtml(target.model.glb, target.labels ?? [], "modal")
+          : buildModelHtml(target.id),
     [target],
   );
   const ref = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [explode, setExplode] = useState(0.62);
   const [xray, setXray] = useState(false);
-  const [spin, setSpin] = useState(true);
+  // com animações na cena a câmara fica quieta; sem animações, roda devagar
+  const [spin, setSpin] = useState(
+    target.kind === "shapes" ? target.spec.anims.length === 0 : true,
+  );
   const [pick, setPick] = useState<{ name: string; note: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -62,9 +72,14 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
     send(`window.__setSpin(${spin})`);
   }, [spin, ready]);
 
-  const meta = target.kind === "sandflow"
-    ? { title: target.model.title, hint: "arrasta para rodar · belisca para aproximar" }
-    : MODELS[target.id];
+  const meta = target.kind === "shapes"
+    ? {
+        title: target.title ?? "Cena 3D",
+        hint: target.spec.caption ?? "toca numa forma para saber o que faz",
+      }
+    : target.kind === "sandflow"
+      ? { title: target.model.title, hint: "arrasta para rodar · belisca para aproximar" }
+      : MODELS[target.id];
 
   return (
     <View style={s.root}>
@@ -85,7 +100,7 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
             html,
             // O GLB vem do catálogo remoto, não do antigo host Sandflow.
             // Usar a origem real evita resolver recursos relativos no domínio morto.
-            baseUrl: isPoly
+            baseUrl: target.kind === "sandflow"
               ? target.model.glb.split("/").slice(0, 3).join("/") + "/"
               : "https://cdn.jsdelivr.net/",
           }}
