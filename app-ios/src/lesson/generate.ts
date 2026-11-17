@@ -868,7 +868,9 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
     key: string | null;
   };
   const attempts: Attempt[] = [];
-  // Ponte local (Gemini web via cookies) primeiro: sem quota por minuto.
+  // Ponte local (Gemini web via cookies do GemCLI) primeiro: grátis e sem
+  // quota por minuto. O prompt completo é aceite; se recusar, a própria
+  // ponte repete com um pedido curto.
   if (API_BASE) {
     attempts.push({
       kind: "chat",
