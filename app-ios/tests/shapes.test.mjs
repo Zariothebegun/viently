@@ -95,7 +95,7 @@ test("labels are trimmed and animation count is bounded", () => {
 test("model3d shapes is accepted by sanitizeOps and counts as the single 3D model", () => {
   const ops = sanitizeOps([
     { op: "model3d", model: "shapes", title: "Órbita", shapes: { objects: [sun, earth], anims: [{ target: "terra", type: "orbit", around: "sol" }] } },
-    { op: "model3d", model: "cell" },
+    { op: "model3d", model: "shapes", shapes: { objects: [{ id: "a", shape: "box", pos: [0,0,0], size: [1,1,1], rot: [0,0,0], color: "blue", opacity: 1, wire: false }] } },
   ]);
   const models = ops.filter((o) => o.op === "model3d");
   assert.equal(models.length, 1);

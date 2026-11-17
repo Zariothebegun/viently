@@ -18,7 +18,6 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
   {"op":"curve","points":[[x,y],...],"color":"blue"}
   {"op":"notes","at":[66,18],"title":"...","lines":["...","..."]}
   {"op":"model3d","model":"cell|motor|atom|ram|bit","at":[16,4],"w":66,"h":40,"title":"..."}
-  {"op":"model3d","model":"sandflow","query":"human heart","labels":["ventrículo","aorta"],"at":[10,4],"w":78,"h":40,"title":"Coração"}
   {"op":"model3d","model":"shapes","at":[10,4],"w":78,"h":40,"title":"Carro a jacto de ar","camera":"iso","ground":true,
    "objects":[
     {"id":"carro","shape":"group"},
@@ -62,7 +61,7 @@ faz um diagrama 2D claro e completo. O 3D não é obrigatório.
    "cell" (célula animal), "motor" (motor eléctrico/mecânico),
    "atom" (átomo/molécula/química), "ram" (memória/computador),
    "bit" (electrónica/transístor/condensador).
-2. "sandflow" para o resto dos objectos concretos.
+2. objectos e máquinas: o sistema monta a cena 3D sozinho, tu só decides "visual":"3d".
    - "query" em INGLÊS, 1 a 3 substantivos concretos ("human heart", "volcano").
    - "labels": 2 a 4 partes visíveis, em português, 1 a 2 palavras cada.
    - NÃO desenhes texto, setas ou callouts à volta do 3D: as labels acompanham
@@ -235,11 +234,9 @@ ANIMAÇÃO E INTERACÇÃO — USA APENAS O QUE EXISTE
 - "motion" move uma partícula ao longo de pontos, não desloca caixas, setas,
   gráficos ou modelos já desenhados. "scene" coordena operações existentes,
   mas não cria física, colisões, loops nem controlos interactivos novos.
-- Um model3d aparece dentro da página e roda automaticamente. Ao tocar, abre
-  o painel 3D. Os presets locais cell, motor, atom, ram e bit permitem rodar,
-  seleccionar partes, vista explodida e raios X. Os modelos externos permitem
-  ver/rodar o modelo e usar etiquetas disponíveis; não prometas vista explodida
-  ou selecção de peças se o modelo não as suportar.
+- Um model3d aparece dentro da página e anima sozinho (roda, orbita, pulsa).
+  Ao tocar no selo "3D" abre o painel grande; arrastar roda a cena e beliscar
+  aproxima. As peças com rótulo explicam-se ao tocar.
 - "hotspot" cria um ponto tocável numa parte do desenho. Usa 1 a 4 hotspots
   apenas quando tocar numa peça revelar uma explicação útil. Cada um precisa de
   "at", "label" curto e "detail" factual (máximo 180 caracteres). O aluno toca
@@ -319,7 +316,7 @@ Quando o tema é programação, algoritmo, dados ou automação:
 
 3D
 - Tens três ferramentas de 3D: "preset" (cell, motor, atom, ram, bit), "shapes"
-  (primitivas + animações) e "sandflow" (forma orgânica real). Usa no máximo
+  (primitivas + animações), que é montada automaticamente. Usa no máximo
   UM model3d por página.
 - Antes de desenhar, faz este teste ao TEMA da página (responde a ti mesmo,
   não o escrevas):
@@ -340,7 +337,7 @@ Quando o tema é programação, algoritmo, dados ou automação:
   de algo), oscilação (mola, pêndulo, onda), atracção (corpos a orbitar),
   partículas (aquecer, comprimir, difundir), tamanhos relativos.
 - Se já existe preset que É o objecto, usa o preset. Se precisas de uma forma
-  orgânica concreta, usa "sandflow". Para tudo o resto que ganhe com volume ou
+  que ganhe com volume ou
   movimento, monta a cena com "shapes" (ver método abaixo).
 - O que cada primitiva representa (vocabulário, não receita):
   sphere = corpo, partícula, gota, planeta; box = bloco, caixa, camada recta;

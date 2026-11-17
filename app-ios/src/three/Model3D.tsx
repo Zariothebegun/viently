@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { PAPER, PALETTE } from "../board/geom";
-import type { SandflowModel } from "./sandflow";
-import { MODELS, buildModelHtml, buildPolyHtml, type ModelId } from "./scene";
 import { buildShapesHtml } from "./shapesHtml";
 import type { ShapesSpec } from "./shapes";
 
@@ -11,41 +9,22 @@ import type { ShapesSpec } from "./shapes";
 // source/onMessage/injectJavaScript, por isso tratamos como componente livre
 const WV = WebView as unknown as React.ComponentType<any>;
 
-const STEPS = [0, 0.2, 0.4, 0.6, 0.8, 1];
-
-// um modelo local (com partes e rótulos) ou um GLB remoto do catálogo Sandflow
-export type ModelTarget =
-  | { kind: "preset"; id: ModelId }
-  | { kind: "sandflow"; model: SandflowModel; labels?: string[] }
-  | { kind: "shapes"; spec: ShapesSpec; title?: string };
+// Só existe um tipo de cena 3D: a que é gerada por primitivas. Os presets da
+// biblioteca e o catálogo remoto de GLB saíram — o modelo escreve a cena.
+export type ModelTarget = { kind: "shapes"; spec: ShapesSpec; title?: string };
 
 /*
   Painel 3D.
   A cena corre numa WebView (three.js real); os rótulos e as linhas-guia vivem
-  dentro da cena, ancorados a pontos do modelo. O React Native só manda o
-  estado (explosão, raios X, rotação) e recebe a parte tocada.
+  dentro da cena, ancorados a formas. O React Native só manda o estado
+  (rotação) e recebe a forma tocada.
 */
 export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () => void }) {
-  const isShapes = target.kind === "shapes";
-  // modelos sem partes explodíveis: GLB remoto e cenas de primitivas
-  const isPoly = target.kind === "sandflow" || isShapes;
-  const html = useMemo(
-    () =>
-      target.kind === "shapes"
-        ? buildShapesHtml(target.spec, "modal")
-        : target.kind === "sandflow"
-          ? buildPolyHtml(target.model.glb, target.labels ?? [], "modal")
-          : buildModelHtml(target.id),
-    [target],
-  );
+  const html = useMemo(() => buildShapesHtml(target.spec, "modal"), [target]);
   const ref = useRef<any>(null);
   const [ready, setReady] = useState(false);
-  const [explode, setExplode] = useState(0.62);
-  const [xray, setXray] = useState(false);
   // com animações na cena a câmara fica quieta; sem animações, roda devagar
-  const [spin, setSpin] = useState(
-    target.kind === "shapes" ? target.spec.anims.length === 0 : true,
-  );
+  const [spin, setSpin] = useState(target.spec.anims.length === 0);
   const [pick, setPick] = useState<{ name: string; note: string } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -58,28 +37,14 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
   const send = (js: string) => ref.current?.injectJavaScript(`${js};true;`);
 
   useEffect(() => {
-    if (!ready || isPoly) return;
-    send(`window.__setExplode(${explode})`);
-  }, [explode, ready, isPoly]);
-
-  useEffect(() => {
-    if (!ready || isPoly) return;
-    send(`window.__setXray(${xray})`);
-  }, [xray, ready, isPoly]);
-
-  useEffect(() => {
     if (!ready) return;
     send(`window.__setSpin(${spin})`);
   }, [spin, ready]);
 
-  const meta = target.kind === "shapes"
-    ? {
-        title: target.title ?? "Cena 3D",
-        hint: target.spec.caption ?? "toca numa forma para saber o que faz",
-      }
-    : target.kind === "sandflow"
-      ? { title: target.model.title, hint: "arrasta para rodar · belisca para aproximar" }
-      : MODELS[target.id];
+  const meta = {
+    title: target.title ?? "Cena 3D",
+    hint: target.spec.caption ?? "toca numa forma para saber o que faz",
+  };
 
   return (
     <View style={s.root}>
@@ -96,14 +61,7 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
       <View style={s.stage}>
         <WV
           ref={ref}
-          source={{
-            html,
-            // O GLB vem do catálogo remoto, não do antigo host Sandflow.
-            // Usar a origem real evita resolver recursos relativos no domínio morto.
-            baseUrl: target.kind === "sandflow"
-              ? target.model.glb.split("/").slice(0, 3).join("/") + "/"
-              : "https://cdn.jsdelivr.net/",
-          }}
+          source={{ html, baseUrl: "https://cdn.jsdelivr.net/" }}
           originWhitelist={["*"]}
           style={s.web}
           containerStyle={s.webWrap}
@@ -130,64 +88,31 @@ export function Model3D({ target, onClose }: { target: ModelTarget; onClose: () 
         {!ready && !err && (
           <View style={s.loading} pointerEvents="none">
             <ActivityIndicator color={PALETTE.gray} />
-            <Text style={s.loadingTxt}>a preparar o modelo…</Text>
+            <Text style={s.loadingTxt}>a preparar a cena…</Text>
           </View>
         )}
         {!!err && (
           <View style={s.loading} pointerEvents="none">
             <Text style={s.errTxt}>{err}</Text>
-            <Text style={s.errHint}>o modelo 3D precisa de internet.</Text>
+            <Text style={s.errHint}>a cena 3D precisa de internet.</Text>
           </View>
         )}
       </View>
 
-      {/* legenda: parte escolhida (presets) ou créditos do autor (Sandflow) */}
       <View style={s.caption}>
-        {target.kind === "sandflow" ? (
-          <View style={s.creditRow}>
-            <Text style={s.capNote} numberOfLines={1}>
-              {target.model.author} · {target.model.licence}
-            </Text>
-            <Pressable onPress={() => Linking.openURL(target.model.page)} hitSlop={10}>
-              <Text style={s.creditLink}>ver modelo ↗</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            <Text style={s.capName} numberOfLines={1}>
-              {pick?.name ?? meta.hint}
-            </Text>
-            {!!pick?.note && (
-              <Text style={s.capNote} numberOfLines={2}>
-                {pick.note}
-              </Text>
-            )}
-          </>
+        <Text style={s.capName} numberOfLines={1}>
+          {pick?.name ?? meta.hint}
+        </Text>
+        {!!pick?.note && (
+          <Text style={s.capNote} numberOfLines={2}>
+            {pick.note}
+          </Text>
         )}
       </View>
 
       {/* controlos */}
       <View style={s.controls}>
-        {!isPoly && (
-          <View style={s.sliderRow}>
-            <Text style={s.end}>montado</Text>
-            <View style={s.dots}>
-              {STEPS.map((v) => (
-                <Pressable key={v} onPress={() => setExplode(v)} hitSlop={7} style={s.dotHit}>
-                  <View style={[s.dot, explode >= v - 0.001 && s.dotOn]} />
-                </Pressable>
-              ))}
-            </View>
-            <Text style={s.end}>explodido</Text>
-          </View>
-        )}
-
         <View style={s.toggles}>
-          {!isPoly && (
-            <Pressable style={[s.toggle, xray && s.toggleOn]} onPress={() => setXray((v) => !v)}>
-              <Text style={[s.toggleTxt, xray && s.toggleTxtOn]}>raios X</Text>
-            </Pressable>
-          )}
           <Pressable style={[s.toggle, spin && s.toggleOn]} onPress={() => setSpin((v) => !v)}>
             <Text style={[s.toggleTxt, spin && s.toggleTxtOn]}>rodar</Text>
           </Pressable>
@@ -242,23 +167,8 @@ const s = StyleSheet.create({
   caption: { paddingHorizontal: 20, paddingTop: 10, minHeight: 52 },
   capName: { fontFamily: "Caveat_600SemiBold", fontSize: 21, color: "#23242a" },
   capNote: { color: "#7d8492", fontSize: 13, lineHeight: 18, marginTop: 1 },
-  creditRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    marginTop: 4,
-  },
-  creditLink: { color: "#5f7a63", fontSize: 12.5, fontWeight: "600" },
 
   controls: { paddingHorizontal: 18, paddingBottom: 18, paddingTop: 4 },
-  sliderRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  end: { color: "#a2a7b3", fontSize: 10.5 },
-  dots: { flex: 1, flexDirection: "row", justifyContent: "space-between" },
-  dotHit: { paddingVertical: 6, flex: 1, alignItems: "center" },
-  dot: { width: 9, height: 9, borderRadius: 5, backgroundColor: "#d3d0c3" },
-  dotOn: { backgroundColor: "#23242a" },
-
   toggles: { flexDirection: "row", gap: 8, marginTop: 6 },
   toggle: { paddingHorizontal: 13, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: "#ddd9cb" },
   toggleOn: { backgroundColor: "#23242a", borderColor: "#23242a" },

@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Check, Ink, Lesson, Op, Size, Step } from "../board/ops";
 import { SURFACE_FNS } from "../board/plot3d";
-import { isModelId } from "../three/models";
 import { sanitizeShapes } from "../three/shapes";
 import { lessonSystem } from "./prompt";
 
@@ -45,7 +44,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v21";
+const CACHE_KEY = "viently.lessons.v23";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -67,7 +66,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v21|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v23|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -384,31 +383,10 @@ export function sanitizeOps(raw: any): Op[] {
           title: o.title ? String(o.title).slice(0, 40) : undefined,
           color: safeColor(o.color),
         };
-        if (isModelId(o.model)) {
-          // preset local: roda, explode e mostra as partes
-          out.push({ ...base, model: o.model });
-        } else if (o.model === "shapes") {
-          // aceita a cena em o.shapes ou directamente no próprio op
+        if (o.model === "shapes" || o.shapes) {
+          // a cena vem em o.shapes ou directamente no próprio op
           const spec = sanitizeShapes(o.shapes ?? o);
           if (spec) out.push({ ...base, model: "shapes", shapes: spec });
-        } else if (o.model === "sandflow") {
-          const query = String(o.query ?? "")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 80);
-          if (query) {
-            out.push({
-              ...base,
-              model: "sandflow",
-              query,
-              labels: Array.isArray(o.labels)
-                ? o.labels
-                    .map((v: any) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, 26))
-                    .filter((v: string) => v.length > 1)
-                    .slice(0, 4)
-                : undefined,
-            });
-          }
         }
         break;
       }
@@ -1047,7 +1025,10 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
         // A página pedida em 3D mas ainda sem cena: pede-se a cena à parte,
         // com um pedido pequeno e só de geometria.
         const firstBoard = lesson.steps[0]?.board ?? [];
-        if (lesson.visual === "3d" && !firstBoard.some((o) => o.op === "model3d")) {
+        const hasShapes = firstBoard.some(
+          (o) => o.op === "model3d" && (o as any).model === "shapes",
+        );
+        if (lesson.visual === "3d" && !hasShapes) {
           const raw = await askShapes(
             [
               `Página: "${lesson.title ?? input.question}"`,

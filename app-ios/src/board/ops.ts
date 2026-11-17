@@ -1,8 +1,7 @@
 // Gramática de ops do quadro — portada de tutori/engine.py + static/board.js.
 // Espaço lógico: 100 (x) × 75 (y), y cresce para baixo.
 
-import type { SandflowModel } from "../three/sandflow";
-import type { ShapesSpec } from "../three/shapes";
+ import type { ShapesSpec } from "../three/shapes";
 
 export type Pt = [number, number];
 
@@ -112,19 +111,12 @@ export type Op =
       color?: Ink;
     }
   | {
-      // modelo 3D interactivo: o cartão no quadro abre um painel com three.js.
-      // model é um preset local ("cell"…) ou "sandflow" (pesquisado no
-      // catálogo Sand3D e desenhado a partir do GLB real).
+      // modelo 3D interactivo: o cartão no quadro abre o painel com three.js.
+      // A cena é escrita pelo modelo de linguagem em primitivas (esferas,
+      // caixas, grupos…) e validada em sanitizeShapes.
       op: "model3d";
-      model: string;
-      query?: string;
-      // referência já resolvida para um GLB do Sandflow
-      ref?: SandflowModel;
-      // nomes das partes que ficam colados ao modelo 3D
-      labels?: string[];
-      // model "shapes": cena de primitivas (esferas, caixas…) com animações,
-      // descrita pelo modelo de linguagem e validada em sanitizeShapes
-      shapes?: ShapesSpec;
+      model: "shapes";
+      shapes: ShapesSpec;
       at?: Pt;
       w?: number;
       h?: number;

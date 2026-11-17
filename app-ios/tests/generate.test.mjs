@@ -4,7 +4,7 @@ import { parseLesson, sanitizeOps } from "../src/lesson/generate.ts";
 
 test("the renderer receives no more than one 3D model", () => {
   const ops = sanitizeOps([
-    { op: "model3d", model: "cell" },
+    { op: "model3d", model: "shapes", shapes: { objects: [{ id: "a", shape: "sphere", pos: [0,0,0], size: [1,1,1], rot: [0,0,0], color: "blue", opacity: 1, wire: false }] } },
     { op: "model3d", model: "motor" },
   ]);
   assert.equal(ops.filter((op) => op.op === "model3d").length, 1);

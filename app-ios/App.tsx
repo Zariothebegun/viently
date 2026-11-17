@@ -43,7 +43,6 @@ import { defaultKey, loadKey, looksLikeKey, saveKey } from "./src/lesson/key";
 import { seedLesson } from "./src/lesson/seed";
 import { Model3D } from "./src/three/Model3D";
 import { LiveModel, type ModelOp, type ModelOpen } from "./src/three/LiveModel";
-import { MODELS } from "./src/three/scene";
 
 const INK = "#26334b";
 const BODY = "#46536a";
@@ -1298,7 +1297,7 @@ export default function App() {
   const modelItem = stepPage
     ? stepPage.items.find((it) => {
         const op: any = it.op;
-        return op.op === "model3d" && (op.model in MODELS || op.model === "sandflow" || (op.model === "shapes" && !!op.shapes));
+        return op.op === "model3d" && op.model === "shapes" && !!op.shapes;
       })
     : undefined;
   const modelOp = modelItem?.op as ModelOp | undefined;

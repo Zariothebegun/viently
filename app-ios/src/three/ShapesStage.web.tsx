@@ -5,7 +5,6 @@ import { buildShapesHtml } from "./shapesHtml";
 
 /*
   Na web não há WebView: a mesma cena corre dentro de um iframe, como nos
-  presets (PresetStage.web).
 
   Não há temporizador de falha: o iframe não tem canal de mensagens com a app,
   por isso qualquer timeout acabava por esconder uma cena que estava a correr
