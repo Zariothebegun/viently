@@ -368,7 +368,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
         if (kind === "notes") est *= 0.6;
         const bigOp = ["graph", "code", "plot3d", "model3d"].includes(kind);
         const budget = bigOp ? 7200 : 5200;
-        if (kind !== "title" && areaUsed + est > budget) {
+        if (kind !== "title" && kind !== "model3d" && areaUsed + est > budget) {
           droppedCount++;
           continue;
         }
@@ -494,6 +494,16 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       continue;
     }
     if (best.score > 6) {
+      // A cena 3D nunca desaparece: é o desenho principal da página. Fica no
+      // melhor sítio encontrado, mesmo que tenha de partilhar espaço.
+      if (kind === "model3d") {
+        const { pos, bbox } = best;
+        op.at = pos;
+        op.w = bbox[2] - bbox[0];
+        op.h = bbox[3] - bbox[1];
+        placed.push({ b: bbox, w: 2 });
+        continue;
+      }
       // empilhado é pior do que ausente
       op._drop = true;
       continue;
@@ -752,15 +762,29 @@ export function applyOpsDetailed(
     .map((b) => ({ b, w: 1 }));
 
   const result = layoutPass(fresh, prior);
+  let ops = result.ops;
+  let dropped = result.dropped;
+
+  // Se a cena 3D foi descartada, o espaço reservado para ela ficava vazio em
+  // cima e o resto do desenho amontoado em baixo. Sem a cena, volta a compor
+  // só com o que sobrou para a página encher o quadro.
+  const asked3d = fresh.filter((o) => o.op === "model3d").length;
+  const kept3d = ops.filter((o) => o.op === "model3d").length;
+  if (asked3d > 0 && kept3d === 0) {
+    const again = layoutPass(fresh.filter((o) => o.op !== "model3d"), prior);
+    ops = again.ops;
+    dropped = again.dropped;
+  }
+
   const items = [
     ...base,
-    ...result.ops.map((op, i) => ({
+    ...ops.map((op, i) => ({
       id: `op-${nextSeed()}-${i}`,
       op,
       seed: nextSeed(),
     })),
   ];
-  return { items, dropped: result.dropped };
+  return { items, dropped };
 }
 
 export function applyOps(existing: Item[], incoming: Op[], nextSeed: () => number): Item[] {

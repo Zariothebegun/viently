@@ -101,6 +101,10 @@ function RevealText({
     const widest = Math.max(...lines.map((l) => l.length * CHAR_W[size]));
     x = at[0] - widest / 2;
   }
+  // Um rótulo centrado num ponto perto da margem começava fora do quadro e
+  // aparecia cortado. Encosta-se à margem em vez de sair do papel.
+  const widestLine = Math.max(...lines.map((l) => l.length * CHAR_W[size]));
+  x = Math.max(1.5, Math.min(x, 98.5 - widestLine));
   const y0 = valign === "top" ? at[1] : at[1] - ((lines.length - 1) * lineH) / 2;
 
   const rows: React.ReactNode[] = [];

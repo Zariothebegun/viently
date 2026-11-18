@@ -54,10 +54,8 @@ if (renderer) {
   // telemóvel não suportar, ficam só as luzes directas
   let envOn = false;
   try {
-    const pm = new THREE.PMREMGenerator(renderer);
-    scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = roomEnvironment();
     scene.environmentIntensity = 0.55;
-    pm.dispose();
     envOn = true;
   } catch (e) {}
   scene.add(new THREE.HemisphereLight(0xfffdf2, 0x8d887a, envOn ? 0.95 : 1.35));
@@ -583,29 +581,50 @@ if (renderer) {
       minY = Math.min(minY, y - pad); maxY = Math.max(maxY, y + pad);
     });
     if (minX > maxX) { minX = 0; maxX = W; minY = 0; maxY = H; }
-    placed.sort(function (a, b) { return a.ay - b.ay; });
-    placed.forEach(function (p, i) {
+    // As pílulas são separadas por coluna (esquerda/direita do desenho) e
+    // distribuídas sem se sobreporem: antes, com três peças do mesmo lado, os
+    // rótulos empilhavam-se uns em cima dos outros ("Peso e ar").
+    const capH = capEl && capEl.offsetHeight ? capEl.offsetHeight + 8 : 0;
+    const bottom = Math.max(4, H - 4 - capH);
+    const colunas = { esq: [], dir: [] };
+    placed.forEach(function (p) {
       const w = p.it.pw || 40, h = p.it.ph || 20;
-      // lado mais próximo da peça, com folga para a linha-guia
       const gap = 12;
-      let left = p.ax < (minX + maxX) / 2;
-      let x = left ? minX - w - gap : maxX + gap;
-      // sem espaço fora do desenho no lado da peça: encosta à margem desse lado
-      // (nunca atravessa a cena para o lado oposto)
+      const esquerda = p.ax < (minX + maxX) / 2;
+      let x = esquerda ? minX - w - gap : maxX + gap;
+      // sem espaço fora do desenho do lado da peça: encosta à margem desse lado
       x = clamp(x, 4, Math.max(4, W - w - 4));
-      // a legenda vive na faixa de baixo: as pílulas não entram nela
-      const capH = capEl && capEl.offsetHeight ? capEl.offsetHeight + 8 : 0;
-      let y = clamp(p.ay - h / 2, 4, Math.max(4, H - h - 4 - capH));
-      // empurra para cima/baixo em vez de entrar na silhueta
-      for (let j = 0; j < i; j++) {
-        const q = placed[j];
-        const qw = q.it.pw || 40, qh = q.it.ph || 20;
-        if (x < q.px + qw + 4 && x + w + 4 > q.px && y < q.py + qh + 3 && y + h + 3 > q.py) {
-          y = q.py + qh + 5;
-          if (y + h > H - 4 - capH) y = Math.max(4, q.py - h - 5);
+      p.px = x; p.pw = w; p.ph = h;
+      (esquerda ? colunas.esq : colunas.dir).push(p);
+    });
+    ["esq", "dir"].forEach(function (lado) {
+      const col = colunas[lado];
+      col.sort(function (a, b) { return a.ay - b.ay; });
+      let cursor = 4;
+      col.forEach(function (p) {
+        const h = p.ph;
+        let y = clamp(p.ay - h / 2, 4, Math.max(4, bottom - h));
+        if (y < cursor) y = cursor;
+        p.py = y;
+        cursor = y + h + 5;
+      });
+      // coluna que passou do fundo: sobe o conjunto mantendo a ordem
+      const ultima = col[col.length - 1];
+      if (ultima && ultima.py + ultima.ph > bottom) {
+        let sobra = ultima.py + ultima.ph - bottom;
+        for (let i = col.length - 1; i >= 0 && sobra > 0; i--) {
+          const antes = col[i].py;
+          col[i].py = Math.max(4, col[i].py - sobra);
+          sobra -= antes - col[i].py;
+        }
+        for (let i = 0; i < col.length; i++) {
+          const piso = i === 0 ? 4 : col[i - 1].py + col[i - 1].ph + 5;
+          if (col[i].py < piso) col[i].py = piso;
         }
       }
-      p.px = x; p.py = y;
+    });
+    colunas.esq.concat(colunas.dir).forEach(function (p) {
+      const x = p.px, y = p.py, w = p.pw, h = p.ph;
       const tr = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
       if (p.it._tr !== tr) { p.it._tr = tr; p.it.pill.style.transform = tr; }
       p.it.pill.style.opacity = "1";
@@ -618,7 +637,6 @@ if (renderer) {
       p.it.dot.setAttribute("cx", p.ax); p.it.dot.setAttribute("cy", p.ay);
     });
   }
-
 
   let capShown = -1;
   function updateCaption(t) {
@@ -756,11 +774,22 @@ if (renderer) {
 }
 `;
 
-export function buildShapesHtml(spec: ShapesSpec, mode: ShapesMode = "modal"): string {
+export function buildShapesHtml(
+  spec: ShapesSpec,
+  mode: ShapesMode = "modal",
+  threeSources?: string[],
+): string {
   const clean = sanitizeShapes(spec);
   const inline = mode === "inline";
   const font = inline ? 11.5 : 13.5;
   const lineH = inline ? 14.5 : 17;
+  const sources =
+    threeSources && threeSources.length
+      ? threeSources
+      : [
+          "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+          "https://unpkg.com/three@0.169.0/build/three.module.js",
+        ];
   const body = clean
     ? `const SPEC = ${safeJson(clean)};\nconst INLINE = ${inline ? "true" : "false"};\n${RUNTIME}`
     : `window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: "error", message: "cena 3D inválida" }));`;
@@ -806,22 +835,136 @@ export function buildShapesHtml(spec: ShapesSpec, mode: ShapesMode = "modal"): s
 <div id="labels"></div>
 <div id="cap"></div>
 ${inline ? "" : `<div id="boot">a preparar a cena…</div>`}
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js">
-<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/geometries/RoundedBoxGeometry.js">
-<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/environments/RoomEnvironment.js">
-<link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/utils/BufferGeometryUtils.js">
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
-} }
+
+<script>
+  // qualquer falha na cena aparece escrita em vez de deixar a área em branco
+  window.__shapesErr = function (msg) {
+    try {
+      var boot = document.getElementById("boot");
+      if (boot) { boot.textContent = "3D indisponível: " + msg; return; }
+      var d = document.createElement("div");
+      d.id = "err";
+      d.textContent = "3D indisponível: " + msg;
+      d.style.cssText = "position:absolute;left:8px;right:8px;top:8px;font:12px system-ui;color:#8d3b31;background:rgba(255,253,246,.9);border:1px solid #e0d9c8;border-radius:8px;padding:6px 8px;z-index:9";
+      document.body.appendChild(d);
+    } catch (e) {}
+  };
+  window.addEventListener("error", function (e) { window.__shapesErr(String((e && e.message) || e)); });
+  window.addEventListener("unhandledrejection", function (e) { window.__shapesErr(String((e && e.reason && e.reason.message) || e.reason)); });
 </script>
 <script type="module">
-import * as THREE from "three";
-import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+// A app descarrega o three uma única vez e passa aqui o endereço local; os
+// CDN ficam só como recurso de emergência. Antes eram quatro pedidos ao CDN
+// por cada iframe, e quando o host abortava a cena ficava em branco ("Nada").
+const THREE_SOURCES = ${JSON.stringify(sources)};
+let THREE = null;
+for (let i = 0; i < THREE_SOURCES.length; i++) {
+  try {
+    THREE = await import(THREE_SOURCES[i]);
+    break;
+  } catch (err) {}
+}
+if (!THREE) {
+  if (window.__shapesErr) window.__shapesErr("a biblioteca 3D não carregou");
+  throw new Error("three indisponível");
+}
+
+// caixa de cantos arredondados: a geometria é a mesma do addon da three,
+// feita aqui para a cena não depender de mais nenhum ficheiro do CDN
+function roundedBoxGeometry(sx, sy, sz, segments, radius) {
+  const r = Math.max(0.0001, Math.min(radius, Math.min(sx, sy, sz) / 2));
+  const seg = Math.max(2, Math.round(segments));
+  const g = new THREE.BoxGeometry(sx, sy, sz, seg * 2, seg * 2, seg * 2);
+  const pos = g.attributes.position;
+  const hx = sx / 2 - r;
+  const hy = sy / 2 - r;
+  const hz = sz / 2 - r;
+  const v = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const d = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i);
+    c.set(
+      Math.min(hx, Math.max(-hx, v.x)),
+      Math.min(hy, Math.max(-hy, v.y)),
+      Math.min(hz, Math.max(-hz, v.z)),
+    );
+    d.subVectors(v, c);
+    if (d.lengthSq() > 1e-12) {
+      d.setLength(r);
+      pos.setXYZ(i, c.x + d.x, c.y + d.y, c.z + d.z);
+    }
+  }
+  g.computeVertexNormals();
+  return g;
+}
+function RoundedBoxGeometry(sx, sy, sz, segments, radius) {
+  return roundedBoxGeometry(sx, sy, sz, segments, radius);
+}
+
+// junta várias geometrias numa só (o addon mergeGeometries só fazia isto)
+function mergeGeometries(parts) {
+  const list = (parts || []).filter(function (g) { return g && g.attributes && g.attributes.position; });
+  if (!list.length) return new THREE.BufferGeometry();
+  if (list.length === 1) return list[0];
+  const out = new THREE.BufferGeometry();
+  const names = ["position", "normal", "uv"].filter(function (n) {
+    return list.every(function (g) { return !!g.attributes[n]; });
+  });
+  for (let n = 0; n < names.length; n++) {
+    const name = names[n];
+    const size = list[0].attributes[name].itemSize;
+    let total = 0;
+    for (let i = 0; i < list.length; i++) total += list[i].attributes[name].count;
+    const arr = new Float32Array(total * size);
+    let off = 0;
+    for (let i = 0; i < list.length; i++) {
+      const src = list[i].attributes[name].array;
+      arr.set(src, off);
+      off += src.length;
+    }
+    out.setAttribute(name, new THREE.BufferAttribute(arr, size));
+  }
+  const anyIndex = list.some(function (g) { return !!g.index; });
+  if (anyIndex) {
+    let total = 0;
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i];
+      total += g.index ? g.index.count : g.attributes.position.count;
+    }
+    const idx = total > 65535 ? new Uint32Array(total) : new Uint16Array(total);
+    let off = 0;
+    let base = 0;
+    for (let i = 0; i < list.length; i++) {
+      const g = list[i];
+      const count = g.index ? g.index.count : g.attributes.position.count;
+      for (let k = 0; k < count; k++) idx[off + k] = (g.index ? g.index.getX(k) : k) + base;
+      off += count;
+      base += g.attributes.position.count;
+    }
+    out.setIndex(new THREE.BufferAttribute(idx, 1));
+  }
+  return out;
+}
+
+// mapa de ambiente simples (substitui o RoomEnvironment do addon): dá brilho
+// aos metais e ao vidro sem descarregar mais nada
+function roomEnvironment() {
+  const cv = document.createElement("canvas");
+  cv.width = 64;
+  cv.height = 32;
+  const ctx = cv.getContext("2d");
+  const grad = ctx.createLinearGradient(0, 0, 0, 32);
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(0.5, "#f1eee5");
+  grad.addColorStop(1, "#8b8679");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 ${body}
 </script>
 <script>

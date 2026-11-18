@@ -439,6 +439,12 @@ function BoardArea({
 const StaticStep = memo(
   function StaticStep({ page, w, h }: { page: StepPage; w: number; h: number }) {
     const g = geometry(w, h, !!page.check);
+    // As páginas já desenhadas também têm de mostrar a cena 3D: sem isto o
+    // quadro reservava a faixa de cima e ficava vazia (a página "em branco").
+    const staticModel = page.items.find((it: any) => {
+      const op: any = it.op;
+      return op.op === "model3d" && op.model === "shapes" && !!op.shapes;
+    });
     return (
       <View style={{ height: h }}>
         <PagePaper />
@@ -465,6 +471,8 @@ const StaticStep = memo(
               fallbackH={g.bh}
               pageHeight={h}
               fracOf={() => 1}
+              modelOp={staticModel?.op as ModelOp | undefined}
+              modelVisible={1}
             />
             {page.layoutWarning && <Text style={s.layoutWarning}>O desenho foi simplificado para caber nesta página.</Text>}
             <View style={s.lineBox}>

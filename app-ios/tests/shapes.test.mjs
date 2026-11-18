@@ -12,7 +12,12 @@ function moduleSource(html) {
   const open = html.indexOf('<script type="module">');
   const close = html.indexOf("</script>", open);
   assert.ok(open >= 0 && close > open, "module script present");
-  return html.slice(open + '<script type="module">'.length, close).replace(/^\s*import .*?;\s*$/gm, "");
+  // o corpo da cena usa top-level await (o three é carregado com
+  // repetições), por isso valida-se dentro de uma função async
+  const body = html
+    .slice(open + '<script type="module">'.length, close)
+    .replace(/^\s*import .*?;\s*$/gm, "");
+  return "(async () => {" + body + "})();";
 }
 
 test("an empty or malformed scene is rejected so the page falls back to 2D", () => {
