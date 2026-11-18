@@ -235,6 +235,8 @@ if (renderer) {
       op: o.opacity, eff: o.opacity, mayFade: o.opacity < 1,
       pill: null, pw: 0, ph: 0, line: null, dot: null, vis: true
     };
+    // a cena monta-se em frente do aluno: as peças entram uma a uma
+    it.g.visible = false;
     items.push(it);
     byId[o.id] = it;
   });
@@ -374,8 +376,29 @@ if (renderer) {
     OUT.value = clamp(R * 0.011, 0.012, 0.05);
   }
 
-  function resize() {
+  // A legenda vive agarrada ao fundo. O palco encolhe para lhe deixar a faixa
+  // dela: antes o texto ficava POR CIMA de metade do modelo (o "empuxo
+  // vetorial" tapava a aeronave toda).
+  function capBand() {
+    return capEl && capEl.offsetHeight ? capEl.offsetHeight + 6 : 0;
+  }
+
+  function resize(tentativa) {
     if (!sampled) sampleFit();
+    // logo no arranque o layout pode ainda não ter altura (innerHeight a 0):
+    // espera um instante em vez de encolher a cena para 50 px
+    const fullH = Math.max(
+      window.innerHeight || 0,
+      stage.clientHeight || 0,
+      stage.parentNode ? stage.parentNode.clientHeight || 0 : 0,
+    );
+    if (fullH < 120) {
+      if ((tentativa || 0) < 12) setTimeout(function () { resize((tentativa || 0) + 1); }, 60);
+      return;
+    }
+    // a legenda nunca ocupa mais de um terço da cena
+    const band = Math.min(capBand(), Math.floor(fullH * 0.35));
+    stage.style.height = Math.max(80, fullH - band) + "px";
     W = Math.max(40, stage.clientWidth);
     H = Math.max(40, stage.clientHeight);
     renderer.setSize(W, H, false);
@@ -560,6 +583,7 @@ if (renderer) {
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
     items.forEach(function (it) {
       if (!it.pill) return;
+      if (revealed < items.length) { hideLabel(it); return; }
       if (!it.vis) { hideLabel(it); return; }
       if (it.anchor) { proj.copy(it.anchor); it.g.localToWorld(proj); }
       else it.g.getWorldPosition(proj);
@@ -584,7 +608,9 @@ if (renderer) {
     // As pílulas são separadas por coluna (esquerda/direita do desenho) e
     // distribuídas sem se sobreporem: antes, com três peças do mesmo lado, os
     // rótulos empilhavam-se uns em cima dos outros ("Peso e ar").
-    const capH = capEl && capEl.offsetHeight ? capEl.offsetHeight + 8 : 0;
+    // H já não inclui a faixa da legenda (ver resize), por isso não se
+    // volta a descontar aqui
+    const capH = 0;
     const bottom = Math.max(4, H - 4 - capH);
     const colunas = { esq: [], dir: [] };
     placed.forEach(function (p) {
@@ -639,6 +665,10 @@ if (renderer) {
   }
 
   let capShown = -1;
+  let lastBand = -1;
+  // ~34 ms por peça: uma cena de 16 peças aparece montada em meio segundo
+  const REVEAL_STEP = INLINE ? 34 : 24;
+  let revealed = 0;
   function updateCaption(t) {
     if (!capEl) return;
     let k = -1;
@@ -647,6 +677,12 @@ if (renderer) {
     capShown = k;
     capEl.textContent = k >= 0 ? SPEC.captions[k].text : "";
     capEl.style.opacity = k >= 0 ? "1" : "0";
+    // outra legenda pode ter mais linhas: o enquadramento acompanha
+    const band = capBand();
+    if (band !== lastBand) {
+      lastBand = band;
+      resize();
+    }
   }
 
   // ---- ciclo de desenho ----
@@ -676,12 +712,20 @@ if (renderer) {
     const t = now - t0;
     if (spin && !INLINE) { az += dt * 0.28; }
     try {
+      if (revealed < items.length) {
+        const k = Math.min(items.length, 1 + Math.floor(t / REVEAL_STEP));
+        if (k !== revealed) {
+          for (let i = revealed; i < k; i++) items[i].g.visible = true;
+          revealed = k;
+        }
+      }
       applyAnims(t);
       updateCamera();
       renderer.render(scene, camera);
       layoutLabels();
       updateCaption(t);
     } catch (e) {
+      if (window.__shapesErr) window.__shapesErr(String((e && e.message) || e));
       post({ type: "error", message: "não consegui desenhar a cena" });
       return;
     }
@@ -806,8 +850,8 @@ export function buildShapesHtml(
   #stage canvas { display:block; width:100% !important; height:100% !important; }
   #lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
   #cap {
-    position:absolute; left:50%; bottom:4px; transform:translateX(-50%); max-width:92%;
-    padding:3px 10px; border-radius:10px; text-align:center; opacity:0; transition:opacity .25s ease;
+    position:absolute; left:50%; bottom:3px; transform:translateX(-50%); max-width:97%;
+    padding:2px 9px; border-radius:10px; text-align:center; opacity:0; transition:opacity .25s ease;
     background:rgba(255,253,246,0.94); border:1px solid rgba(45,47,54,0.22);
     font-family:"Bradley Hand","Chalkboard SE","Marker Felt",-apple-system,cursive;
     font-size:${font}px; line-height:${lineH}px; color:#23242a; pointer-events:none;

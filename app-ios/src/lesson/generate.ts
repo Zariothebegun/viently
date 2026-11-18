@@ -843,6 +843,7 @@ export const SHAPES_SYSTEM = [
   "Serve para qualquer tema: máquinas, circuitos (fios = cylinder from/to, cargas = stream por path fechado), órgãos, órbitas, estruturas, camadas. Máx. 48 objectos.",
   "O objecto principal ocupa 60% a 80% da cena; setas e etiquetas menores que metade dele. Rótulos em português. Nada de texto fora do JSON.",
   "Eixos: x = direita, y = cima, z = para ti; a câmara front vê o plano x-y (usa-a para pontes, engrenagens, esquemas); iso mostra volume; top, órbitas. O eixo de wheel e gear é o z; torus size [diâmetro, espessura do tubo, diâmetro] é um anel horizontal.",
+  "ESCREVE MENOS E FICA IGUAL: mirror:'x'|'z'|'xz' numa peça cria as cópias simétricas (rodas, asas, pernas, parafusos); repeat:{n,step:[x,y,z],cols?,row_step?,around?:'x'|'y'|'z',center?,angle?} faz fileiras, colunas, grelhas e rodas de peças iguais; on:{id,at:'top'|'bottom'|'left'|'right'|'front'|'back',gap?} encaixa a peça em cima de outra. Usa sempre estes atalhos em vez de escrever peças repetidas uma a uma (mesmo desenho, resposta mais curta).",
   "Não copies os exemplos: imita só o nível de detalhe e a lógica (peças reais, causa → efeito, legendas sincronizadas) para o tema pedido.",
 ].join(" ");
 
@@ -953,9 +954,17 @@ function attachScene(lesson: Lesson, raw: any, title?: string): boolean {
 const FORMAT_RETRY = new Set([400, 404, 422]);
 
 export async function generateLesson(input: GenerateInput): Promise<Lesson> {
+  const inicio = Date.now();
+  // tempos de cada fase (aparecem na consola do browser; ajudam a ver o que
+  // está lento sem adivinhar)
+  const marca = (etapa: string) => {
+    try {
+      console.log("[viently] " + etapa + " " + (Date.now() - inicio) + " ms");
+    } catch (e) {}
+  };
   const key = await cacheKey(input);
   const cached = await readCache(key);
-  if (cached) return cached;
+  if (cached) { marca("cache"); return cached; }
 
   const system = lessonSystem({
     pace: input.pace,
@@ -968,6 +977,30 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
 
   const deadline = Date.now() + 300000;
   let lastError: unknown = null;
+
+  // A cena 3D não espera pela página: assim que o aluno pergunta, o pedido
+  // da cena segue em paralelo com o da explicação. A ponte aceita os dois
+  // ao mesmo tempo, por isso o total passa a ser a chamada mais lenta em
+  // vez da soma das duas (~30 s + ~30 s antes).
+  const contexto = (input.history ?? [])
+    .slice(-2)
+    .map((m) => String(m.content ?? ""))
+    .join(" / ")
+    .slice(0, 240);
+  const pedidoCena = [
+    "TEMA DA CENA: " + input.question,
+    contexto ? "Contexto do aluno: " + contexto : "",
+    "Mostra o mecanismo central deste tema: as peças reais que o compõem, como se ligam e o que se move por causa de quê.",
+    "Exigência: 14 a 24 peças reais (nada de versões simplificadas), 3 a 6 captions sincronizadas, rótulos nas peças que a explicação usa e animação que mostre a causa e o efeito.",
+    "Usa mirror, repeat e on para as peças simétricas ou repetidas.",
+    "Devolve SÓ a cena JSON (objects, anims, captions). Não escrevas página, título, say nem board.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const cenaEmParalelo: Promise<any | null> = askShapes(pedidoCena, Date.now() + 150000).catch(
+    () => null,
+  );
+
 
   // Gemini responde em segundos; OpenRouter é o fallback quando não há chave
   // Gemini ou ela falha.
@@ -994,7 +1027,7 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
       attempts.push({ kind: "gemini", model: m, endpoint: "gemini", key: apiKey });
     }
   }
-  const cloudKey = input.key;
+  const cloudKey = input.key && String(input.key).trim() ? input.key : null;
   if (cloudKey) {
     const cloudModels = [input.model || DEFAULT_MODEL, ...FALLBACK_MODELS];
     for (const m of cloudModels) {
@@ -1034,6 +1067,7 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
                 attempt.key,
               );
         if (!lesson.steps.length) throw new Error("A aula ficou sem passos utilizáveis.");
+        marca("página");
 
         // A página pedida em 3D mas ainda sem cena: pede-se a cena à parte,
         // com um pedido pequeno e só de geometria.
@@ -1042,31 +1076,38 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
           (o) => o.op === "model3d" && (o as any).model === "shapes",
         );
         if (lesson.visual === "3d" && !hasShapes) {
-          // a cena tem orçamento próprio: a página já gastou o tempo dela e,
-          // sem isto, a segunda chamada saía com o prazo esgotado
+          // a cena tem orçamento próprio: a página já gastou o tempo dela
           const sceneDeadline = Math.max(deadline, Date.now() + 45000);
-          const raw = await askShapes(
-            [
-              `TEMA DA CENA: ${lesson.title ?? input.question}`,
-              lesson.subtitle ?? "",
-              `IDEIA A MOSTRAR: ${String(lesson.steps[0]?.say ?? "").slice(0, 320)}`,
-              "Devolve SÓ a cena JSON (objects, anims, captions). Não escrevas página, título, say nem board.",
-            ]
-              .filter(Boolean)
-              .join("\n"),
-            sceneDeadline,
-          );
+          // a que arrancou em paralelo já deve estar pronta; só se falhou é
+          // que se pede outra, agora com a ideia exacta da página
+          let raw = await cenaEmParalelo;
+          marca("cena em paralelo");
+          if (!raw || !sanitizeShapes(raw)) {
+            raw = await askShapes(
+              [
+                `TEMA DA CENA: ${lesson.title ?? input.question}`,
+                lesson.subtitle ?? "",
+                `IDEIA A MOSTRAR: ${String(lesson.steps[0]?.say ?? "").slice(0, 320)}`,
+                "Devolve SÓ a cena JSON (objects, anims, captions). Não escrevas página, título, say nem board.",
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              sceneDeadline,
+            );
+          }
           if (raw) attachScene(lesson, raw, lesson.title);
+          marca("cena");
           // revisão: se a cena ficou pobre, uma segunda tentativa com o que falta
           const first = (lesson.steps[0]?.board ?? []).find((o: any) => o.op === "model3d") as any;
           const issues = first?.shapes ? lintShapes(first.shapes) : ["a cena não passou a validação"];
+          marca(issues.length ? "revisao: " + issues.join(" | ") : "revisao: ok");
           if (issues.length && Date.now() < sceneDeadline - 8000) {
             const again = await askShapes(
               [
                 `Página: "${lesson.title ?? input.question}"`,
                 String(lesson.steps[0]?.say ?? "").slice(0, 600),
                 `Pedido do aluno: ${input.question}`,
-                `A versão anterior ficou fraca: ${issues.join("; ")}. Refaz a cena completa, mais rica e correcta.`,
+                `A versão anterior ficou fraca: ${issues.join("; ")}. Refaz a cena completa com 14 a 24 peças reais: mantém o que já estava correcto e acrescenta as peças, rótulos, captions e animações que faltam.`,
               ].join("\n"),
               deadline,
             );
@@ -1081,8 +1122,10 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
           lesson.suggestions = ["Dá-me um exemplo concreto", "Porque é que isso acontece?"];
         }
         await writeCache(key, lesson);
+        marca("fim");
         return lesson;
       } catch (e: any) {
+        marca("falhou " + attempt.kind + "/" + mode + ": " + String(e && e.message).slice(0, 90));
         lastError = e;
         // 401/402/403/429 não melhoram a tentar outro formato; modelo seguinte
         if (!(e instanceof HttpError) || !FORMAT_RETRY.has(e.status)) break;

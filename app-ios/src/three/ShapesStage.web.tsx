@@ -4,6 +4,10 @@ import type { ShapesSpec } from "./shapes";
 import { buildShapesHtml } from "./shapesHtml";
 import { threeSources } from "./threeAsset";
 
+// O download do three começa assim que a app abre: quando a primeira cena
+// aparecer, a biblioteca já está em memória (antes esperava ~1 s por ela).
+void threeSources();
+
 /*
   Na web não há WebView: a mesma cena corre dentro de um iframe, como nos
   outros módulos 3D.
