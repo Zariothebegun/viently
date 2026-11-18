@@ -43,6 +43,8 @@ import { defaultKey, loadKey, looksLikeKey, saveKey } from "./src/lesson/key";
 import { seedLesson } from "./src/lesson/seed";
 import { Model3D } from "./src/three/Model3D";
 import { LiveModel, type ModelOp, type ModelOpen } from "./src/three/LiveModel";
+import { LiveScene } from "./src/three/LiveScene";
+import type { ShapesSpec } from "./src/three/shapes";
 
 const INK = "#26334b";
 const BODY = "#46536a";
@@ -74,6 +76,8 @@ type HeroPage = BasePage & { kind: "hero" };
 type LoadPage = BasePage & {
   kind: "load";
   question: string;
+  // cena 3D parcial: chega peça a peça enquanto a página é escrita
+  live?: ShapesSpec | null;
 };
 
 type StepPage = BasePage & {
@@ -995,7 +999,7 @@ export default function App() {
     }
 
     loadingRef.current.add(id);
-    patchPage(id, { state: "loading", error: undefined });
+    patchPage(id, { state: "loading", error: undefined, live: null });
 
     try {
       const lesson = await generateLesson({
@@ -1011,6 +1015,9 @@ export default function App() {
         // 1 = intuição, 2 = mecanismo, 3 números, 4 falhas, 5 compromissos,
         // 6+ aprofundamento livre: o scroll nunca acaba, muda de foco
         depth: p.depth + 1,
+        onScene: (spec: ShapesSpec) => {
+          if (pagesRef.current.some((x) => x.id === id)) patchPage(id, { live: spec });
+        },
       });
 
       if (!pagesRef.current.some((x) => x.id === id)) return;
@@ -1321,7 +1328,9 @@ export default function App() {
     );
   }
 
-  const renderLoad = (pg: LoadPage) => (
+  const renderLoad = (pg: LoadPage) => {
+    const live = pg.live && pg.live.objects.length >= 1 ? pg.live : null;
+    return (
     <View style={{ height: layout.h }}>
       <PagePaper />
       <View style={s.loadBox}>
@@ -1336,10 +1345,19 @@ export default function App() {
               </Text>
             </Pressable>
           </>
+        ) : live ? (
+          <View style={s.liveWrap}>
+            <Text style={s.liveKicker}>
+              a desenhar · {live.objects.length} peça{live.objects.length === 1 ? "" : "s"}
+            </Text>
+            <View style={s.liveStage}>
+              <LiveScene spec={live} />
+            </View>
+            <Text style={s.liveNote}>a escrever a página enquanto o desenho cresce</Text>
+          </View>
         ) : (
           <>
-
-          <ActivityIndicator color={MINT} />
+            <ActivityIndicator color={MINT} />
             <Text style={s.loadKicker}>
               {pg.depth === 0 ? "a preparar a tua página" : "a seguir"}
             </Text>
@@ -1358,7 +1376,8 @@ export default function App() {
         )}
       </View>
     </View>
-  );
+    );
+  };
 
   const renderHero = () => (
     <View style={{ height: layout.h }}>
@@ -2118,6 +2137,33 @@ const s = StyleSheet.create({
     color: "#faf8f1",
     fontFamily: "Quicksand_700Bold",
     fontSize: 13.5,
+  },
+  liveWrap: {
+    flex: 1,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  liveKicker: {
+    color: "#9aa198",
+    fontFamily: "Quicksand_600SemiBold",
+    fontSize: 10.5,
+    letterSpacing: 1.6,
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  liveStage: {
+    width: "100%",
+    flex: 1,
+    maxHeight: 460,
+  },
+  liveNote: {
+    marginTop: 8,
+    color: MUTED,
+    fontFamily: "Quicksand_500Medium",
+    fontSize: 12,
+    textAlign: "center",
   },
   skeleton: {
     width: 240,

@@ -2,7 +2,7 @@ import { pickShapeExamples } from "./shapesExamples";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Check, Ink, Lesson, Op, Size, Step } from "../board/ops";
 import { SURFACE_FNS } from "../board/plot3d";
-import { lintShapes, sanitizeShapes } from "../three/shapes";
+import { lintShapes, sanitizeShapes, type ShapesSpec } from "../three/shapes";
 import { lessonSystem } from "./prompt";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -609,6 +609,8 @@ export type GenerateInput = {
   // profundidade da página: 1 intuição, 2 mecanismo, 3 números, 4 falhas,
   // 5 compromissos; daí para cima é aprofundamento livre
   depth?: number;
+  // recebe a cena 3D a crescer, peça a peça, enquanto a aula é escrita
+  onScene?: (spec: ShapesSpec) => void;
 };
 
 // Contrato para o response_format: uma página inteira, sem steps. O "board"
@@ -865,7 +867,151 @@ function extractObject(text: string): any | null {
   }
 }
 
-async function askShapes(prompt: string, deadline: number): Promise<any | null> {
+
+/* ---------------------------------------------------------------
+   Leitura da cena à medida que o modelo a escreve.
+
+   O Gemini web devolve a resposta em pedaços (o primeiro chega aos
+   ~16 s, as peças continuam a chegar durante ~9 s). Em vez de esperar
+   pelo fim, cada peça completa que aparece no texto é logo transformada
+   numa cena parcial: o desenho cresce no ecrã enquanto a aula é escrita.
+   --------------------------------------------------------------- */
+
+// objectos completos já escritos dentro de "objects": [ ... ]
+export function partialObjects(text: string): any[] {
+  const key = text.indexOf('"objects"');
+  if (key < 0) return [];
+  const start = text.indexOf("[", key);
+  if (start < 0) return [];
+  const out: any[] = [];
+  let depth = 0, inStr = false, esc = false, objStart = -1;
+  for (let i = start + 1; i < text.length; i++) {
+    const c = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === "{" || c === "[") {
+      if (depth === 0 && c === "{") objStart = i;
+      depth++;
+    } else if (c === "}" || c === "]") {
+      depth--;
+      if (depth <= 0 && c === "]") break;        // fim da lista
+      if (depth === 0 && objStart >= 0) {
+        try { out.push(JSON.parse(text.slice(objStart, i + 1))); } catch { /* ignora */ }
+        objStart = -1;
+      }
+    }
+  }
+  return out;
+}
+
+function partialScene(text: string, seen: number): { spec: ShapesSpec | null; n: number } {
+  const objs = partialObjects(text);
+  if (objs.length <= seen) return { spec: null, n: seen };
+  const head = text.match(/"camera"\s*:\s*"(iso|front|side|top)"/);
+  const spec = sanitizeShapes({
+    objects: objs,
+    anims: [],
+    camera: head ? head[1] : "iso",
+    ground: !/"ground"\s*:\s*false/.test(text),
+    captions: [],
+  });
+  return { spec: spec && spec.objects.length ? spec : null, n: objs.length };
+}
+
+async function readStream(
+  res: Response,
+  onText: (text: string) => void,
+): Promise<string | null> {
+  const body: any = (res as any).body;
+  if (!body || typeof body.getReader !== "function") return null;
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "", buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\n\n");
+    buf = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const j = JSON.parse(data);
+        const d = j?.choices?.[0]?.delta?.content;
+        if (typeof d === "string" && d) {
+          text += d;
+          onText(text);
+        }
+        if (j?.error?.message) throw new Error(String(j.error.message));
+      } catch (e: any) {
+        if (e && typeof e.message === "string" && /^stream |API local|Gemini/.test(e.message)) throw e;
+      }
+    }
+  }
+  return text;
+}
+
+async function askShapesStream(
+  prompt: string,
+  deadline: number,
+  onScene?: (spec: ShapesSpec) => void,
+): Promise<any | null> {
+  if (!API_BASE || !onScene) return null;
+  let seen = 0, lastAt = 0;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), Math.max(30000, deadline - Date.now()));
+  try {
+    const res = await fetch(API_BASE + "/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        model: API_MODEL || "gemini-web",
+        temperature: 0.5,
+        stream: true,
+        messages: [
+          { role: "system", content: shapesSystemFor(prompt) },
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error("stream " + res.status);
+    const text = await readStream(res, (acc) => {
+      const agora = Date.now();
+      if (agora - lastAt < 260) return;
+      const { spec, n } = partialScene(acc, seen);
+      if (!spec) return;
+      seen = n;
+      lastAt = agora;
+      onScene(spec);
+    });
+    if (!text) return null;
+    const obj = extractObject(text);
+    if (obj) {
+      const final = sanitizeShapes(obj);
+      if (final) onScene(final);
+      return obj;
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function askShapes(prompt: string, deadline: number, onScene?: (spec: ShapesSpec) => void): Promise<any | null> {
+  const viaStream = await askShapesStream(prompt, deadline, onScene);
+  if (viaStream) return viaStream;
+
   const targets: Array<() => Promise<string>> = [];
 
   if (API_BASE) {
@@ -997,7 +1143,11 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   ]
     .filter(Boolean)
     .join("\n");
-  const cenaEmParalelo: Promise<any | null> = askShapes(pedidoCena, Date.now() + 150000).catch(
+  const cenaEmParalelo: Promise<any | null> = askShapes(
+    pedidoCena,
+    Date.now() + 150000,
+    input.onScene,
+  ).catch(
     () => null,
   );
 
