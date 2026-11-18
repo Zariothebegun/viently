@@ -32,13 +32,15 @@ const capEl = document.getElementById("cap");
 
 let renderer = null;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: !INLINE, alpha: true, powerPreference: "low-power" });
+  // antialias nos dois modos: sem isto as arestas da cena na página ficam
+  // serrilhadas ("pixelizadas"), sobretudo nas pontas e nos contornos
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
 } catch (e) {
   post({ type: "error", message: "este telemóvel não abriu o 3D" });
 }
 
 if (renderer) {
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, INLINE ? 1.25 : 1.75));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, INLINE ? 2 : 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   stage.appendChild(renderer.domElement);
   renderer.domElement.addEventListener("webglcontextlost", function (e) {
@@ -591,14 +593,16 @@ if (renderer) {
       // sem espaço fora do desenho no lado da peça: encosta à margem desse lado
       // (nunca atravessa a cena para o lado oposto)
       x = clamp(x, 4, Math.max(4, W - w - 4));
-      let y = clamp(p.ay - h / 2, 4, Math.max(4, H - h - 4));
+      // a legenda vive na faixa de baixo: as pílulas não entram nela
+      const capH = capEl && capEl.offsetHeight ? capEl.offsetHeight + 8 : 0;
+      let y = clamp(p.ay - h / 2, 4, Math.max(4, H - h - 4 - capH));
       // empurra para cima/baixo em vez de entrar na silhueta
       for (let j = 0; j < i; j++) {
         const q = placed[j];
         const qw = q.it.pw || 40, qh = q.it.ph || 20;
         if (x < q.px + qw + 4 && x + w + 4 > q.px && y < q.py + qh + 3 && y + h + 3 > q.py) {
           y = q.py + qh + 5;
-          if (y + h > H - 4) y = Math.max(4, q.py - h - 5);
+          if (y + h > H - 4 - capH) y = Math.max(4, q.py - h - 5);
         }
       }
       p.px = x; p.py = y;
@@ -644,7 +648,7 @@ if (renderer) {
     if (!held && last && !lowQ && ++fc > 3) {
       ema = ema ? ema * 0.9 + (now - last) * 0.1 : now - last;
       if (ema > (INLINE ? 55 : 38)) slow++; else slow = 0;
-      if (slow > 8) { lowQ = true; renderer.setPixelRatio(1); resize(); dirty = true; }
+      if (slow > 8) { lowQ = true; renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); resize(); dirty = true; }
     }
     last = now;
     if (!t0) t0 = now;
