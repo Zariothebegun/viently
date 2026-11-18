@@ -1,7 +1,8 @@
+import { pickShapeExamples } from "./shapesExamples";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Check, Ink, Lesson, Op, Size, Step } from "../board/ops";
 import { SURFACE_FNS } from "../board/plot3d";
-import { sanitizeShapes } from "../three/shapes";
+import { lintShapes, sanitizeShapes } from "../three/shapes";
 import { lessonSystem } from "./prompt";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -44,7 +45,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v24";
+const CACHE_KEY = "viently.lessons.v29";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -66,7 +67,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v24|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v29|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -827,20 +828,30 @@ async function callGemini(
 // Segunda chamada, focada: escrever SÓ a cena 3D. O pedido grande de uma vez
 // fazia o modelo cortar a cena a meio (5 a 8 peças em vez das 12 a 30 pedidas)
 // ou devolver JSON inválido; aqui a única tarefa é geometria.
-const SHAPES_SYSTEM = [
-  "Desenhas uma cena 3D didáctica. Respondes APENAS com um objecto JSON.",
-  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso","ground":true}.',
-  "Cada objecto: {id, shape, parent?, pos:[x,y,z], size:number|[x,y,z], rot?:[x,y,z], color, opacity?, mirror?:'x'|'z'|'xz', label?, note?}.",
-  "Formas: sphere, box, rbox, cylinder, capsule, cone, torus, ring, plane, arrow, group.",
-  "Regras: 12 a 16 peças (nem menos nem mais); JSON compacto, numa só linha;",
-  "(1 unidade ≈ 1 metro); usa group + parent para o conjunto e mirror para as peças",
-  "simétricas; rótulos em português (≤22 caracteres) só nas 4 a 8 peças que a",
-  "explicação usa, cada uma com note que ensina; animações spin/orbit/bounce/pulse",
-  "para o que é contínuo e move/fade/color com at_ms para contar por ordem.",
-  "Enquadramento: o objecto principal ocupa 60% a 80% da cena; nenhuma seta ou",
-  "etiqueta pode ser maior do que metade dele; no máximo 6 etiquetas, curtas.",
-  "Nada de texto fora do JSON.",
+export const SHAPES_SYSTEM = [
+  "Desenhas uma cena 3D didáctica montada só com formas simples. Respondes APENAS com um objecto JSON compacto, numa só linha.",
+  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso|front|side|top","ground":true}.',
+  "Objecto: {id, shape, parent?, pos:[x,y,z], size:número|[x,y,z], rot?:[x,y,z graus], color, opacity?, finish?, mirror?:'x'|'z'|'xz', from?, to?, label?, note?}.",
+  "Formas: sphere, box, rbox (caixa arredondada), cylinder, capsule, cone, torus, ring, plane, arrow (+y), group, wheel (roda com pneu e jante; size [diâmetro,largura,diâmetro]), gear (teeth 6-24), stream (partículas que correm de from a to, ou por path de pontos; count 3-14, size = tamanho da partícula).",
+  "finish: matte (omissão), metal, glass (translúcido: deixa ver o interior), glow (luz, energia, fluxo).",
+  "from/to [x,y,z] em cylinder, capsule, box, rbox e arrow ligam dois pontos (tubos, fios, hastes, setas) sem calcular rotações.",
+  "MÉTODO: (1) decompõe o objecto real em 14 a 30 peças com proporções reais (x comprimento, y altura, z largura, 1 unidade ≈ 1 metro): corpo, partes funcionais, cada roda/pá/tubo/apoio;",
+  "(2) um group + parent agrupa o que se move junto; mirror repete peças simétricas (rodas, asas, pernas) e as animações também;",
+  "(3) invólucros e cascas em finish glass para o interior se ver; (4) mostra a CAUSA com setas e streams: azul = fluido/entrada, verde = resultado/força útil, vermelho = peso/perda, laranja = energia; entram com opacity 0 + anim fade por ordem (at_ms crescente);",
+  "(5) acaba no efeito visível (sobe, sai, orbita, acende); (6) captions: 3 a 6 frases curtas sincronizadas com at_ms; (7) label (≤22 caracteres) só em 4 a 8 peças que a explicação usa, cada uma com note que ensina.",
+  "Anims: spin (axis, speed), orbit (around, speed), bounce (axis, amp, speed), pulse (amp, speed), move (path, duration_ms), fade (to_opacity, duration_ms), color (to_color, duration_ms); at_ms atrasa; move/fade/color ficam no fim, loop:true faz vai-e-volta.",
+  "Serve para qualquer tema: máquinas, circuitos (fios = cylinder from/to, cargas = stream por path fechado), órgãos, órbitas, estruturas, camadas. Máx. 48 objectos.",
+  "O objecto principal ocupa 60% a 80% da cena; setas e etiquetas menores que metade dele. Rótulos em português. Nada de texto fora do JSON.",
+  "Eixos: x = direita, y = cima, z = para ti; a câmara front vê o plano x-y (usa-a para pontes, engrenagens, esquemas); iso mostra volume; top, órbitas. O eixo de wheel e gear é o z; torus size [diâmetro, espessura do tubo, diâmetro] é um anel horizontal.",
+  "Não copies os exemplos: imita só o nível de detalhe e a lógica (peças reais, causa → efeito, legendas sincronizadas) para o tema pedido.",
 ].join(" ");
+
+export function shapesSystemFor(prompt: string): string {
+  const ex = pickShapeExamples(prompt)
+    .map((e) => `Exemplo (${e.name}): ${e.scene}`)
+    .join(" ");
+  return SHAPES_SYSTEM + " " + ex;
+}
 
 function extractObject(text: string): any | null {
   const start = text.indexOf("{");
@@ -866,7 +877,7 @@ async function askShapes(prompt: string, deadline: number): Promise<any | null> 
           model: API_MODEL || "gemini-web",
           temperature: 0.5,
           messages: [
-            { role: "system", content: SHAPES_SYSTEM },
+            { role: "system", content: shapesSystemFor(prompt) },
             { role: "user", content: prompt },
           ],
         }),
@@ -886,7 +897,7 @@ async function askShapes(prompt: string, deadline: number): Promise<any | null> 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              systemInstruction: { parts: [{ text: SHAPES_SYSTEM }] },
+              systemInstruction: { parts: [{ text: shapesSystemFor(prompt) }] },
               contents: [{ role: "user", parts: [{ text: prompt }] }],
               generationConfig: { temperature: 0.5, maxOutputTokens: 6144 },
             }),
@@ -1031,18 +1042,40 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
           (o) => o.op === "model3d" && (o as any).model === "shapes",
         );
         if (lesson.visual === "3d" && !hasShapes) {
+          // a cena tem orçamento próprio: a página já gastou o tempo dela e,
+          // sem isto, a segunda chamada saía com o prazo esgotado
+          const sceneDeadline = Math.max(deadline, Date.now() + 45000);
           const raw = await askShapes(
             [
-              `Página: "${lesson.title ?? input.question}"`,
+              `TEMA DA CENA: ${lesson.title ?? input.question}`,
               lesson.subtitle ?? "",
-              String(lesson.steps[0]?.say ?? "").slice(0, 900),
-              `Monta a cena 3D que explica esta ideia. Pedido original do aluno: ${input.question}`,
+              `IDEIA A MOSTRAR: ${String(lesson.steps[0]?.say ?? "").slice(0, 320)}`,
+              "Devolve SÓ a cena JSON (objects, anims, captions). Não escrevas página, título, say nem board.",
             ]
               .filter(Boolean)
               .join("\n"),
-            deadline,
+            sceneDeadline,
           );
           if (raw) attachScene(lesson, raw, lesson.title);
+          // revisão: se a cena ficou pobre, uma segunda tentativa com o que falta
+          const first = (lesson.steps[0]?.board ?? []).find((o: any) => o.op === "model3d") as any;
+          const issues = first?.shapes ? lintShapes(first.shapes) : ["a cena não passou a validação"];
+          if (issues.length && Date.now() < sceneDeadline - 8000) {
+            const again = await askShapes(
+              [
+                `Página: "${lesson.title ?? input.question}"`,
+                String(lesson.steps[0]?.say ?? "").slice(0, 600),
+                `Pedido do aluno: ${input.question}`,
+                `A versão anterior ficou fraca: ${issues.join("; ")}. Refaz a cena completa, mais rica e correcta.`,
+              ].join("\n"),
+              deadline,
+            );
+            const better = again ? sanitizeShapes(again) : null;
+            if (better && (!first?.shapes || lintShapes(better).length < issues.length)) {
+              if (first) first.shapes = better;
+              else attachScene(lesson, again, lesson.title);
+            }
+          }
         }
         if (!lesson.suggestions?.length) {
           lesson.suggestions = ["Dá-me um exemplo concreto", "Porque é que isso acontece?"];

@@ -85,7 +85,7 @@ test("one-shot animations stay at their end state unless a loop is requested", (
 test("labels are trimmed and animation count is bounded", () => {
   const spec = sanitizeShapes({
     objects: [{ ...earth, label: "  uma etiqueta   muito muito muito comprida demais  ", note: "n".repeat(500) }],
-    anims: Array.from({ length: 60 }, () => ({ target: "terra", type: "pulse" })),
+    anims: Array.from({ length: 80 }, () => ({ target: "terra", type: "pulse" })),
   });
   assert.ok(spec.objects[0].label.length <= SHAPE_LIMITS.label);
   assert.ok(spec.objects[0].note.length <= SHAPE_LIMITS.note);
@@ -191,18 +191,94 @@ test("hidden objects, captions and the new shapes are accepted", () => {
   assert.equal(spec.anims[0].to_opacity, 1);
 });
 
-test("the example in the tutor prompt is a rich, valid scene", async () => {
-  const { lessonSystem } = await import("../src/lesson/prompt.ts");
-  const prompt = lessonSystem({});
-  const start = prompt.indexOf('{"op":"model3d","model":"shapes"');
-  const end = prompt.indexOf('\n  {"op":"axes"', start);
-  assert.ok(start > 0 && end > start, "example present");
-  const ops = sanitizeOps([JSON.parse(prompt.slice(start, end).trim())]);
-  const op = ops.find((o) => o.op === "model3d");
-  assert.ok(op, "example survives sanitizeOps");
-  assert.ok(op.shapes.objects.length >= 15, "example is detailed: " + op.shapes.objects.length);
-  assert.ok(op.shapes.anims.length >= 6 && op.shapes.captions.length >= 3);
-  for (const mode of ["inline", "modal"]) {
-    assert.doesNotThrow(() => new Script(moduleSource(buildShapesHtml(op.shapes, mode))));
+test("every model scene is rich and valid, and examples are picked by topic", async () => {
+  const { SHAPE_EXAMPLES, pickShapeExamples } = await import("../src/lesson/shapesExamples.ts");
+  const { shapesSystemFor } = await import("../src/lesson/generate.ts");
+  assert.ok(SHAPE_EXAMPLES.length >= 12);
+  for (const e of SHAPE_EXAMPLES) {
+    const spec = sanitizeShapes(JSON.parse(e.scene));
+    assert.ok(spec && spec.objects.length >= 3 && spec.captions.length >= 1, e.name);
+    for (const mode of ["inline", "modal"]) {
+      assert.doesNotThrow(() => new Script(moduleSource(buildShapesHtml(spec, mode))), e.name);
+    }
   }
+  assert.equal(pickShapeExamples("como funciona o coração e o sangue")[0].name, "sangue");
+  assert.equal(pickShapeExamples("engrenagens de um relógio")[0].name, "engrenagens");
+  assert.ok(shapesSystemFor("circuito com lâmpada").includes("Exemplo (circuito)"));
+});
+
+test("sanitizing twice gives the same scene (attachScene and the renderer both validate)", () => {
+  const raw = {
+    objects: [
+      { id: "tubo", shape: "cylinder", from: [-5, 0, 0], to: [5, 3, 1], size: 0.2, mirror: "z" },
+      { id: "ar", shape: "stream", from: [0, 0, 0], to: [0, -3, 0], count: 5, finish: "glow", opacity: 0 },
+      { id: "roda", shape: "wheel", pos: [1, 0.4, 1], size: [0.8, 0.3, 0.8], mirror: "xz" },
+      { id: "dente", shape: "gear", pos: [0, 2, 0], size: 1.2, teeth: 16 },
+      { id: "seta", shape: "arrow", from: [0, 0, 0], to: [0, 5, 0], color: "green" },
+    ],
+    anims: [{ target: "tubo", type: "pulse" }],
+  };
+  const once = sanitizeShapes(raw);
+  const twice = sanitizeShapes(once);
+  assert.deepEqual(twice, once);
+  assert.ok(once.objects.some((o) => o.shape === "stream" && o.pts.length === 2));
+  assert.ok(once.objects.find((o) => o.id === "tubo").size[1] > 10, "long pipe keeps its length");
+});
+
+test("from/to aims the +Y axis exactly (XYZ Euler, as three.js applies it)", () => {
+  const rotate = (v, [rx, ry, rz]) => {
+    const [a, b, c] = [rx, ry, rz].map((d) => (d * Math.PI) / 180);
+    let [x, y, z] = v;
+    [x, y] = [x * Math.cos(c) - y * Math.sin(c), x * Math.sin(c) + y * Math.cos(c)]; // Rz
+    [x, z] = [x * Math.cos(b) + z * Math.sin(b), -x * Math.sin(b) + z * Math.cos(b)]; // Ry
+    [y, z] = [y * Math.cos(a) - z * Math.sin(a), y * Math.sin(a) + z * Math.cos(a)]; // Rx
+    return [x, y, z];
+  };
+  const cases = [[[0, 0, 0], [0, 2, 0]], [[0, 0, 0], [0, -2, 0]], [[0, 0, 0], [3, 0, 0]], [[1, 1, 1], [-2, 3, 0.5]], [[0, 0, 0], [0, 0, -4]], [[2, 2, 2], [2, -1, 5]]];
+  for (const [from, to] of cases) {
+    const o = sanitizeShapes({ objects: [{ id: "a", shape: "arrow", from, to }] }).objects[0];
+    const d = to.map((v, i) => v - from[i]);
+    const len = Math.hypot(...d);
+    const got = rotate([0, 1, 0], o.rot);
+    d.forEach((v, i) => assert.ok(Math.abs(got[i] - v / len) < 1e-6, `${JSON.stringify([from, to])} axis ${i}: ${got[i]} vs ${v / len}`));
+    assert.ok(Math.abs(o.size[1] - len) < 1e-9, "length matches");
+  }
+});
+
+test("finish, glass opacity and bad streams are handled", () => {
+  const spec = sanitizeShapes({
+    objects: [
+      { id: "v", shape: "box", finish: "glass", opacity: 1 },
+      { id: "m", shape: "box", finish: "chrome" },
+      { id: "s", shape: "stream", from: [0, 0, 0] },
+    ],
+  });
+  assert.equal(spec.objects.length, 2, "stream without two points is dropped");
+  assert.equal(spec.objects[0].opacity, 0.4);
+  assert.equal(spec.objects[1].finish, "matte");
+});
+
+test("layout operators: radial, helix, grid, on, and animations follow copies", () => {
+  const spec = sanitizeShapes({
+    objects: [
+      { id: "base", shape: "box", pos: [0, 0, 0], size: [4, 1, 4], color: "gray" },
+      { id: "topo", shape: "sphere", on: { id: "base", at: "top", gap: 0.1 }, size: 1, color: "red" },
+      { id: "p", shape: "sphere", pos: [2, 0, 0], size: 0.4, repeat: { n: 6, around: "y" }, color: "blue" },
+      { id: "h", shape: "sphere", pos: [1, 0, 0], size: 0.3, repeat: { n: 10, around: "y", angle: 36, step: [0, 0.3, 0] }, color: "green" },
+      { id: "g", shape: "cube" in {} ? "box" : "box", pos: [0, 0, 5], size: 0.5, repeat: { n: 6, cols: 3, step: [1, 0, 0], row_step: [0, 0, 1] } },
+    ],
+    anims: [{ target: "p", type: "pulse", amp: 0.2 }],
+  });
+  const by = Object.fromEntries(spec.objects.map((o) => [o.id, o]));
+  assert.ok(Math.abs(by.topo.pos[1] - (0.5 + 0.5 + 0.1)) < 1e-9, "on top: " + by.topo.pos);
+  const ps = spec.objects.filter((o) => o.id.startsWith("p"));
+  assert.equal(ps.length, 6);
+  for (const o of ps) assert.ok(Math.abs(Math.hypot(o.pos[0], o.pos[2]) - 2) < 1e-6, "ring radius");
+  assert.ok(Math.abs(by.p_4.pos[0] + 2) < 1e-6, "opposite copy");
+  assert.equal(spec.anims.filter((a) => a.type === "pulse").length, 6, "anim copied");
+  assert.ok(Math.abs(by.h_10.pos[1] - 2.7) < 1e-9, "helix rises");
+  const gs = spec.objects.filter((o) => o.id === "g" || o.id.startsWith("g_"));
+  assert.deepEqual(gs[4].pos, [1, 0, 6]);
+  // idempotent
+  assert.deepEqual(sanitizeShapes(spec), spec);
 });

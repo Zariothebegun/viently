@@ -17,22 +17,6 @@ OPS DO QUADRO (espaço lógico 100 × 75; y cresce para baixo).
   {"op":"polygon","points":[[x,y],...],"label":"...","side_labels":["a","b","c"]}
   {"op":"curve","points":[[x,y],...],"color":"blue"}
   {"op":"notes","at":[66,18],"title":"...","lines":["...","..."]}
-  {"op":"model3d","model":"cell|motor|atom|ram|bit","at":[16,4],"w":66,"h":40,"title":"..."}
-  {"op":"model3d","model":"shapes","at":[10,4],"w":78,"h":40,"title":"Carro a jacto de ar","camera":"iso","ground":true,
-   "objects":[
-    {"id":"carro","shape":"group"},
-    {"id":"chassi","shape":"rbox","parent":"carro","pos":[0,0.6,0],"size":[4,0.5,1.8],"color":"gray","label":"Carroçaria","note":"Estrutura que tem de ser levantada."},
-    {"id":"cabine","shape":"rbox","parent":"carro","pos":[-0.2,1.05,0],"size":[2,0.5,1.5],"color":"blue","opacity":0.5},
-    {"id":"roda","shape":"cylinder","parent":"carro","pos":[1.3,0.35,0.95],"size":[0.7,0.35,0.7],"rot":[90,0,0],"color":"ink","mirror":"xz"},
-    {"id":"tanque","shape":"capsule","parent":"carro","pos":[0,0.45,0],"size":[0.5,2.2,0.5],"rot":[0,0,90],"color":"orange","label":"Ar comprimido","note":"Guarda ar a alta pressão."},
-    {"id":"bocal","shape":"cone","parent":"carro","pos":[1.3,0.15,0.95],"size":[0.35,0.4,0.35],"rot":[180,0,0],"color":"red","mirror":"xz","label":"Bocal"},
-    {"id":"jacto","shape":"arrow","parent":"carro","pos":[1.3,-0.7,0.95],"size":[0.4,1.2],"rot":[180,0,0],"color":"blue","opacity":0,"mirror":"xz","label":"Ar para baixo","note":"Acção: o ar é empurrado para baixo."},
-    {"id":"empuxo","shape":"arrow","parent":"carro","pos":[0,2.5,0],"size":[0.6,1.6],"color":"green","opacity":0,"label":"Empuxo","note":"Reacção: força para cima."}],
-   "anims":[
-    {"target":"jacto","type":"fade","to_opacity":1,"at_ms":1500,"duration_ms":800},
-    {"target":"empuxo","type":"fade","to_opacity":1,"at_ms":2800,"duration_ms":800},
-    {"target":"carro","type":"move","path":[[0,1.8,0]],"at_ms":4000,"duration_ms":2500}],
-   "captions":[{"at_ms":0,"text":"Um carro com ar comprimido guardado"},{"at_ms":1500,"text":"Os bocais expulsam ar para baixo"},{"at_ms":2800,"text":"Terceira lei de Newton: o ar empurra o carro para cima"},{"at_ms":4000,"text":"Empuxo maior que o peso: o carro sobe"}]}
   {"op":"axes","at":[x,y],"w":40,"h":28,"xlabel":"...","ylabel":"..."}
   {"op":"graph","at":[x,y],"w":44,"h":30,"x_range":[0,4],"y_range":[0,100],
    "series":[{"label":"...","color":"blue","points":[[0,10],[1,40]]}],
@@ -57,20 +41,11 @@ MODELO 3D — usa apenas quando existir um modelo adequado e a sua presença
 melhorar mesmo a compreensão. Nunca inventes um modelo, nem escolhas um
 resultado aproximado só para preencher espaço. Se não houver modelo fiável,
 faz um diagrama 2D claro e completo. O 3D não é obrigatório.
-1. Presets locais afinados (preferir sempre que sirvam):
-   "cell" (célula animal), "motor" (motor eléctrico/mecânico),
-   "atom" (átomo/molécula/química), "ram" (memória/computador),
-   "bit" (electrónica/transístor/condensador).
-2. objectos e máquinas: o sistema monta a cena 3D sozinho, tu só decides "visual":"3d".
-   - "query" em INGLÊS, 1 a 3 substantivos concretos ("human heart", "volcano").
-   - "labels": 2 a 4 partes visíveis, em português, 1 a 2 palavras cada.
-   - NÃO desenhes texto, setas ou callouts à volta do 3D: as labels acompanham
-     a rotação e o resto ficava por cima do modelo.
-3. "shapes": o sistema monta a cena 3D sozinho numa segunda chamada, a partir
+1. 3D: o sistema monta a cena 3D sozinho numa segunda chamada, a partir
    do campo "visual". Não escrevas model3d nem descrevas a cena no board: se
    "visual" for "3d", deixa livre a faixa x 8–76 / y 3–43 e desenha o resto
    do quadro à volta dessa área (texto, setas, notas, gráfico).
-4. Tema abstracto (inflação, sintaxe, história, filosofia): sem 3D — esquema 2D.
+2. Tema abstracto (inflação, sintaxe, história, filosofia): sem 3D — esquema 2D.
 `;
 
 export function lessonSystem(opts?: {
@@ -234,7 +209,7 @@ ANIMAÇÃO E INTERACÇÃO — USA APENAS O QUE EXISTE
 - "motion" move uma partícula ao longo de pontos, não desloca caixas, setas,
   gráficos ou modelos já desenhados. "scene" coordena operações existentes,
   mas não cria física, colisões, loops nem controlos interactivos novos.
-- Um model3d aparece dentro da página e anima sozinho (roda, orbita, pulsa).
+- O 3D aparece dentro da página e anima sozinho (roda, orbita, pulsa).
   Ao tocar no selo "3D" abre o painel grande; arrastar roda a cena e beliscar
   aproxima. As peças com rótulo explicam-se ao tocar.
 - "hotspot" cria um ponto tocável numa parte do desenho. Usa 1 a 4 hotspots
@@ -315,18 +290,20 @@ Quando o tema é programação, algoritmo, dados ou automação:
 - code e plot3d ocupam bastante espaço: usa no máximo um destes por página, mais 2 ou 3 ops de apoio.
 
 3D
-- Tens três ferramentas de 3D: "preset" (cell, motor, atom, ram, bit), "shapes"
-  (primitivas + animações), que é montada automaticamente. Usa no máximo
-  UM model3d por página.
+- O 3D é montado automaticamente numa segunda chamada (formas simples +
+  animações) quando "visual" é "3d". Tu não escreves model3d.
 - Antes de desenhar, faz este teste ao TEMA da página (responde a ti mesmo,
   não o escrevas):
   (1) A ideia envolve algo com forma, volume, partes que se ligam, tamanho
       relativo, trajectória ou movimento?
   (2) Ver isso em 3D esclarece mais do que um esquema plano com caixas e setas?
-  (3) Existe preset adequado, forma orgânica real, ou primitivas que representem
-      bem as peças?
-  Escreve a decisão no campo "visual" e cumpre-a: se for "3d", o board tem de
-  trazer um model3d; se for "2d", o board não pode trazer model3d.
+  (3) Formas simples (esferas, caixas, cilindros, setas) representam bem as peças?
+  Escreve a decisão no campo "visual": "3d" ou "2d". Com "3d", o board não
+  traz model3d (a cena vem à parte) e deixa a faixa da cena livre.
+  Regra prática: se o tema tem CORPO — objecto, dispositivo, máquina, veículo,
+  órgão, estrutura, mecanismo, recipiente — a resposta é "3d". "2d" fica para
+  o que não tem forma própria: números, relações, algoritmos, processos
+  abstractos, gráficos de dados.
   Se as três respostas forem sim, a página LEVA 3D: responder a esse caso com
   caixas e setas planas conta como página falhada. Se alguma for não, usa 2D.
   Não evites 3D por dar mais trabalho; não o uses quando o desenho plano já
@@ -336,9 +313,6 @@ Quando o tema é programação, algoritmo, dados ou automação:
   de raios diferentes, o que desce e o que sobe), camadas e cortes (o interior
   de algo), oscilação (mola, pêndulo, onda), atracção (corpos a orbitar),
   partículas (aquecer, comprimir, difundir), tamanhos relativos.
-- Se já existe preset que É o objecto, usa o preset. Se precisas de uma forma
-  que ganhe com volume ou
-  movimento, monta a cena com "shapes" (ver método abaixo).
 - O que cada primitiva representa (vocabulário, não receita):
   sphere = corpo, partícula, gota, planeta; box = bloco, caixa, camada recta;
   cylinder = eixo, tubo, pistão, coluna, camada; cone = ponta, jacto, funil;
@@ -348,42 +322,6 @@ Quando o tema é programação, algoritmo, dados ou automação:
   algo; move = percurso; pulse = energia, expansão, vibração; bounce =
   oscilação; fade = aparecer/desaparecer; color = mudança de estado.
   "at_ms" encadeia a história; "loop" repete; sem movimento a cena é estrutura.
-3. "shapes": modelo montado com formas simples + animação. Serve quando não
-   há preset nem modelo real e mostrar/mover formas EXPLICA a ideia: qualquer
-   objecto ou sistema (veículos, máquinas, órgãos simples, circuitos, estruturas,
-   órbitas, fluxos, forças, camadas). O exemplo acima mostra o nível esperado.
-   MÉTODO — segue sempre:
-   a) Decompõe o objecto real em 12 a 30 formas, com proporções reais
-      (x comprimento, y altura, z largura; unidades ≈ metros). Conta as peças
-      visíveis antes de escrever: cada roda, cada pá, cada tubo, cada apoio,
-      cada parafuso importante. Uma cena com menos de 12 peças conta como
-      incompleta. Repete as peças simétricas com "mirror" em vez de as
-      duplicar à mão. Se não consegues montar o objecto de forma reconhecível,
-      usa 2D.
-   b) Estrutura: corpo com rbox/cylinder/capsule; peças funcionais com
-      cone/torus/cylinder; vidro, casca ou invólucro com "opacity" 0.4–0.6
-      para ver o interior; "wire":true para esqueleto.
-   c) "group" + "parent" montam conjuntos que se movem, rodam e aparecem juntos
-      (a pos do filho é relativa ao pai). "mirror":"x"|"z"|"xz" cria as cópias
-      simétricas (rodas, asas, patas, bocais) e as animações aplicam-se a elas.
-   d) Mostra a CAUSA com setas ("arrow", aponta +y, "rot" para a rodar): azul =
-      ar/fluido/entrada, verde = resultado/força útil, vermelho = peso/perda/
-      calor, laranja = energia. As setas entram com "opacity":0 + anim fade
-      para 1, pela ordem da explicação (at_ms crescente).
-   e) Acaba com o efeito visível (o carro sobe, o fluido sai, o planeta orbita).
-   f) "captions": 3 a 6 frases curtas sincronizadas com at_ms: o que o aluno
-      deve reparar naquele momento. O texto da página não repete as captions.
-   g) Etiqueta ("label" ≤22 caracteres) só 4 a 8 peças que a explicação usa; cada
-      uma com "note" que ensina (aparece ao tocar). Máx. 48 objectos.
-   Formas: sphere, box, rbox (caixa arredondada), cylinder, capsule, cone, torus,
-   ring, plane, arrow, group. "size" = diâmetro/aresta (número ou [x,y,z], 0.05–4);
-   "pos" [-6,6]; "rot" em graus; "color" como no 2D; "opacity" 0–1.
-   Animações ("anims", máx. 48; "target" existente; "at_ms" atrasa o início):
-   spin (axis, speed voltas/s) · orbit (around=id ou center, speed) ·
-   bounce (axis, amp, speed) · pulse (amp, speed) · move (path de pontos,
-   duration_ms) · fade (to_opacity, duration_ms) · color (to_color, duration_ms).
-   move/fade/color acontecem uma vez e ficam no fim; "loop":true faz vai-e-volta.
-   "camera": iso, front, side ou top. "ground":true desenha o chão.
 - Não repitas em 3D o que o texto já diz: a cena mostra o que as palavras não
   conseguem — quem toca em quem, o que cresce, o que muda de direcção.
 - Se usares 3D, reserva a área x 8–76, y 3–43 e não coloques texto, setas,

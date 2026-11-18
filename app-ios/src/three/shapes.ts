@@ -17,7 +17,14 @@ export type ShapeKind =
   | "arrow"
   | "capsule"
   | "rbox"
+  | "wheel"
+  | "gear"
+  | "stream"
   | "group";
+
+// aspecto do material: matte (por defeito), metal, glass (translúcido) ou glow
+// (emite luz: calor, chama, corrente)
+export type ShapeFinish = "matte" | "metal" | "glass" | "glow";
 
 export type ShapeInk =
   | "ink"
@@ -44,6 +51,13 @@ export type ShapeObject = {
   color: ShapeInk;
   opacity: number;
   wire: boolean;
+  finish?: ShapeFinish;
+  // stream: pontos do percurso, número de partículas e ciclos por segundo
+  pts?: Vec3[];
+  count?: number;
+  speed?: number;
+  // gear: número de dentes
+  teeth?: number;
   label?: string;
   // frase curta mostrada ao tocar no objecto no painel grande
   note?: string;
@@ -93,12 +107,14 @@ export type ShapesSpec = {
 };
 
 export const SHAPE_LIMITS = {
-  objects: 48,
-  anims: 48,
+  objects: 64,
+  anims: 64,
   captions: 6,
   coord: 6,
   sizeMin: 0.05,
   sizeMax: 4,
+  lenMax: 20,
+  streamCount: 14,
   pathPoints: 8,
   durationMax: 20000,
   speedMax: 3,
@@ -109,8 +125,11 @@ export const SHAPE_LIMITS = {
 
 const KINDS: readonly ShapeKind[] = [
   "sphere", "box", "cylinder", "cone", "torus", "ring", "plane", "arrow",
-  "capsule", "rbox", "group",
+  "capsule", "rbox", "wheel", "gear", "stream", "group",
 ];
+const FINISHES: readonly ShapeFinish[] = ["matte", "metal", "glass", "glow"];
+// formas que se podem definir por dois pontos (from → to), sem rotações
+const LINEAR: readonly ShapeKind[] = ["arrow", "cylinder", "capsule", "rbox", "box"];
 const INKS: readonly ShapeInk[] = [
   "ink", "blue", "red", "green", "orange", "purple", "gray", "yellow",
 ];
@@ -170,6 +189,156 @@ function sizeOf(v: unknown): Vec3 {
   return [s, s, s];
 }
 
+// Rotação (graus, ordem XYZ do three.js) que leva o eixo +Y para a direcção
+// a→b. O modelo de linguagem erra contas de rotação; erra muito menos pontos.
+function aim(a: Vec3, b: Vec3): { pos: Vec3; rot: Vec3; len: number } | null {
+  const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 0.05) return null;
+  const ux = dx / len, uy = dy / len, uz = dz / len;
+  let qx = 1, qy = 0, qz = 0, qw = 0; // 180° em torno de X quando aponta para baixo
+  if (uy > -0.9999) {
+    qx = uz; qz = -ux; qw = 1 + uy;
+    const n = Math.hypot(qx, qz, qw);
+    qx /= n; qz /= n; qw /= n;
+  }
+  const m11 = 1 - 2 * (qy * qy + qz * qz);
+  const m12 = 2 * (qx * qy - qz * qw);
+  const m13 = 2 * (qx * qz + qy * qw);
+  const m22 = 1 - 2 * (qx * qx + qz * qz);
+  const m23 = 2 * (qy * qz - qx * qw);
+  const m32 = 2 * (qy * qz + qx * qw);
+  const m33 = 1 - 2 * (qx * qx + qy * qy);
+  const ey = Math.asin(clamp(m13, -1, 1));
+  let ex: number, ez: number;
+  if (Math.abs(m13) < 0.9999999) {
+    ex = Math.atan2(-m23, m33);
+    ez = Math.atan2(-m12, m11);
+  } else {
+    ex = Math.atan2(m32, m22);
+    ez = 0;
+  }
+  const deg = 180 / Math.PI;
+  return {
+    pos: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+    rot: [ex * deg, ey * deg, ez * deg],
+    len,
+  };
+}
+
+
+/*
+  Operadores de layout, aplicados ANTES da validação: o modelo descreve o padrão
+  (repetir, grelha, anel, hélice, "em cima de") e o código calcula as posições.
+  Sai uma lista de objectos simples, sem repeat/on, por isso é idempotente.
+*/
+type Raw = Record<string, any>;
+const rotAbout = (p: Vec3, c: Vec3, axis: "x" | "y" | "z", deg: number): Vec3 => {
+  const a = (deg * Math.PI) / 180, co = Math.cos(a), si = Math.sin(a);
+  const d = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+  let [x, y, z] = d;
+  if (axis === "y") { x = d[0] * co + d[2] * si; z = -d[0] * si + d[2] * co; }
+  else if (axis === "x") { y = d[1] * co - d[2] * si; z = d[1] * si + d[2] * co; }
+  else { x = d[0] * co - d[1] * si; y = d[0] * si + d[1] * co; }
+  return [c[0] + x, c[1] + y, c[2] + z];
+};
+const v3 = (v: unknown, d: Vec3): Vec3 =>
+  Array.isArray(v) ? [num(v[0], d[0]), num(v[1], d[1]), num(v[2], d[2])] : [...d] as Vec3;
+const SIDE: Record<string, [number, number]> = {
+  top: [1, 1], bottom: [1, -1], right: [0, 1], left: [0, -1], front: [2, 1], back: [2, -1],
+};
+
+function expandLayout(rawObjects: unknown[], rawAnims: unknown[]): { objects: Raw[]; anims: Raw[] } {
+  const out: Raw[] = [];
+  const extra: Raw[] = [];
+  const at = new Map<string, { pos: Vec3; half: Vec3 }>();
+  const cap = SHAPE_LIMITS.objects;
+  for (const raw of rawObjects) {
+    if (!raw || typeof raw !== "object") continue;
+    const base: Raw = { ...(raw as Raw) };
+    const id = cleanId(base.id);
+    const rep = base.repeat && typeof base.repeat === "object" ? (base.repeat as Raw) : null;
+    delete base.repeat;
+    // posicionamento relativo a outra peça
+    if (base.on && typeof base.on === "object" || typeof base.on === "string") {
+      const spec: Raw = typeof base.on === "string" ? { id: base.on, at: base.at } : base.on;
+      const tg = at.get(cleanId(spec.id));
+      const side = SIDE[String(spec.at ?? "top")] ?? SIDE.top;
+      if (tg) {
+        const s = sizeOf(base.size);
+        const own: Vec3 = [s[0] / 2, s[1] / 2, s[2] / 2];
+        const off = v3(base.pos, [0, 0, 0]);
+        const p: Vec3 = [tg.pos[0] + off[0], tg.pos[1] + off[1], tg.pos[2] + off[2]];
+        p[side[0]] = tg.pos[side[0]] + side[1] * (tg.half[side[0]] + own[side[0]] + num(spec.gap, 0));
+        base.pos = p;
+      }
+      delete base.on; delete base.at;
+    }
+    const s0 = sizeOf(base.size);
+    const pos0 = v3(base.pos, [0, 0, 0]);
+    const note = (o: Raw, pos: Vec3) => {
+      if (o.id) at.set(cleanId(o.id), { pos, half: [s0[0] / 2, s0[1] / 2, s0[2] / 2] });
+    };
+    if (!rep) { out.push(base); note(base, pos0); continue; }
+
+    const n = Math.round(clamp(num(rep.n, 2), 1, 24));
+    const step = v3(rep.step, [0, 0, 0]);
+    const rowStep = v3(rep.row_step, [0, 0, step[0] || 1]);
+    const cols = Math.max(0, Math.round(num(rep.cols, 0)));
+    const axisRaw = rep.around;
+    const axis: "x" | "y" | "z" | null = axisRaw === "x" || axisRaw === "y" || axisRaw === "z" ? axisRaw : null;
+    const centre = v3(rep.center, [0, 0, 0]);
+    const ang = num(rep.angle, axis ? 360 / n : 0);
+    const rot0 = v3(base.rot, [0, 0, 0]);
+    note(base, pos0);
+    for (let i = 0; i < n && out.length < cap; i++) {
+      const o: Raw = { ...base };
+      let sv: Vec3;
+      if (cols > 0) {
+        const c = i % cols, r = Math.floor(i / cols);
+        sv = [step[0] * c + rowStep[0] * r, step[1] * c + rowStep[1] * r, step[2] * c + rowStep[2] * r];
+      } else sv = [step[0] * i, step[1] * i, step[2] * i];
+      // a mesma transformação vale para pos, from/to e caminhos
+      const tf = (q: Vec3): Vec3 => {
+        let r: Vec3 = [q[0] + sv[0], q[1] + sv[1], q[2] + sv[2]];
+        if (axis) r = rotAbout(r, centre, axis, ang * i);
+        return r;
+      };
+      const p = tf(pos0);
+      if (axis) {
+        const r2: Vec3 = [...rot0] as Vec3;
+        r2[axis === "x" ? 0 : axis === "y" ? 1 : 2] += rep.face === false ? 0 : ang * i;
+        o.rot = r2;
+      }
+      o.pos = p;
+      for (const k of ["from", "to"]) if (Array.isArray(base[k])) o[k] = tf(v3(base[k], [0, 0, 0]));
+      for (const k of ["pts", "path"]) if (Array.isArray(base[k])) o[k] = base[k].map((q: unknown) => tf(v3(q, [0, 0, 0])));
+      if (i > 0) {
+        o.id = `${id || "r"}_${i + 1}`.slice(0, 24);
+        o.label = undefined;
+        o.note = undefined;
+        extra.push({ id: o.id, __of: id, __d: [p[0] - pos0[0], p[1] - pos0[1], p[2] - pos0[2]] });
+      }
+      out.push(o);
+    }
+  }
+  // as animações valem também para as cópias (um "move" desloca-se com a cópia)
+  const anims: Raw[] = [];
+  for (const a of rawAnims) {
+    if (!a || typeof a !== "object") continue;
+    anims.push(a as Raw);
+    const tgt = cleanId((a as Raw).target);
+    for (const e of extra) {
+      if (e.__of !== tgt) continue;
+      const c: Raw = { ...(a as Raw), target: e.id };
+      if (Array.isArray(c.path)) c.path = c.path.map((q: unknown) => { const w = v3(q, [0, 0, 0]); return [w[0] + e.__d[0], w[1] + e.__d[1], w[2] + e.__d[2]]; });
+      anims.push(c);
+    }
+  }
+  for (const o of out) { delete o.__of; delete o.__i; delete o.__d; }
+  return { objects: out, anims };
+}
+
 /*
   Devolve uma cena válida ou null. Null significa "não há nada que valha a
   pena desenhar" e o chamador deve cair para o diagrama 2D.
@@ -188,7 +357,82 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     seen.add(id);
     return id;
   };
-  const list = Array.isArray(r.objects) ? r.objects : [];
+  const expanded = expandLayout(Array.isArray(r.objects) ? r.objects : [], Array.isArray(r.anims) ? r.anims : []);
+  const list = expanded.objects;
+  const L2 = SHAPE_LIMITS;
+  const pt = (v: unknown, fx: number, fz: number): Vec3 | null => {
+    if (!Array.isArray(v) || v.length < 2) return null;
+    const p = vec(v, [0, 0, 0], -L2.coord, L2.coord);
+    return [p[0] * fx, p[1], p[2] * fz];
+  };
+
+  // constrói um objecto; fx/fz espelham as coordenadas (simetria)
+  const build = (item: any, id: string, parent: string | undefined, fx: number, fz: number): ShapeObject | null => {
+    const shape: ShapeKind = item.shape;
+    const finish: ShapeFinish = FINISHES.includes(item.finish) ? item.finish : "matte";
+    let opacity = clamp(num(item.opacity, 1), 0, 1);
+    if (finish === "glass") opacity = Math.min(opacity, 0.4);
+    const obj: ShapeObject = {
+      id,
+      shape,
+      parent,
+      pos: vec(item.pos, [0, 0, 0], -L2.coord, L2.coord),
+      size: sizeOf(item.size),
+      rot: vec(item.rot, [0, 0, 0], -360, 360),
+      color: ink(item.color, shape === "wheel" ? "ink" : "blue"),
+      opacity,
+      wire: item.wire === true,
+      finish,
+      label: text(item.label, L2.label),
+      note: text(item.note, L2.note),
+    };
+    // tubos, vigas e setas podem ser compridos (a validação corre duas vezes)
+    if (LINEAR.includes(shape) && Array.isArray(item.size)) {
+      obj.size[1] = clamp(num(item.size[1], 1), L2.sizeMin, L2.lenMax);
+    }
+    obj.pos = [obj.pos[0] * fx, obj.pos[1], obj.pos[2] * fz];
+    if (fx !== 1 || fz !== 1) {
+      obj.rot = [fz < 0 ? -obj.rot[0] : obj.rot[0], obj.rot[1] * fx * fz, fx < 0 ? -obj.rot[2] : obj.rot[2]];
+    }
+
+    if (shape === "stream") {
+      // aceita o formato de entrada (path ou from/to) e o já validado (pts)
+      const pts = (Array.isArray(item.pts) ? item.pts : Array.isArray(item.path) ? item.path : [item.from, item.to])
+        .slice(0, L2.pathPoints)
+        .map((p: unknown) => pt(p, fx, fz))
+        .filter((p: Vec3 | null): p is Vec3 => !!p);
+      if (pts.length < 2) return null;
+      obj.pts = pts;
+      obj.count = Math.round(clamp(num(item.count, 6), 2, L2.streamCount));
+      obj.speed = clamp(num(item.speed, 0.6), 0.1, L2.speedMax);
+      const d = clamp(num(Array.isArray(item.size) ? item.size[0] : item.size, 0.18), 0.05, 1);
+      obj.size = [d, d, d];
+      obj.pos = [0, 0, 0];
+      obj.rot = [0, 0, 0];
+      return obj;
+    }
+
+    const from = pt(item.from, fx, fz);
+    const to = pt(item.to, fx, fz);
+    if (from && to && LINEAR.includes(shape)) {
+      const a = aim(from, to);
+      if (!a) return null;
+      const thick = clamp(num(Array.isArray(item.size) ? item.size[0] : item.size, shape === "arrow" ? 0.5 : 0.2), L2.sizeMin, L2.sizeMax);
+      obj.pos = a.pos;
+      obj.rot = a.rot;
+      obj.size = [thick, clamp(a.len, L2.sizeMin, L2.lenMax), thick];
+    }
+
+    if (shape === "wheel" || shape === "gear") {
+      // diâmetro, largura e diâmetro; o eixo da roda/engrenagem é o Z
+      const d = obj.size[0];
+      const w = Array.isArray(item.size) ? obj.size[1] : clamp(d * 0.35, L2.sizeMin, L2.sizeMax);
+      obj.size = [d, w, d];
+      if (shape === "gear") obj.teeth = Math.round(clamp(num(item.teeth, 12), 6, 24));
+    }
+    return obj;
+  };
+
   for (const item of list) {
     if (objects.length >= L.objects) break;
     if (!item || typeof item !== "object") continue;
@@ -197,19 +441,8 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     const parentId = cleanId(item.parent);
     // o pai tem de existir antes: impede ciclos
     const parent = parentId && parentId !== id && seen.has(parentId) ? parentId : undefined;
-    const obj: ShapeObject = {
-      id,
-      shape: item.shape,
-      parent,
-      pos: vec(item.pos, [0, 0, 0], -L.coord, L.coord),
-      size: sizeOf(item.size),
-      rot: vec(item.rot, [0, 0, 0], -360, 360),
-      color: ink(item.color, "blue"),
-      opacity: clamp(num(item.opacity, 1), 0, 1),
-      wire: item.wire === true,
-      label: text(item.label, L.label),
-      note: text(item.note, L.note),
-    };
+    const obj = build(item, id, parent, 1, 1);
+    if (!obj) { seen.delete(id); continue; }
     objects.push(obj);
 
     // simetria: "x", "z" ou "xz" cria cópias espelhadas (rodas, asas, patas)
@@ -221,13 +454,10 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
       for (const [suffix, sx, sz] of flips) {
         if (objects.length >= L.objects) break;
         const cid = uniqueId(`${id.slice(0, 20)}_${suffix}`);
-        objects.push({
-          ...obj,
-          id: cid,
-          pos: [obj.pos[0] * sx, obj.pos[1], obj.pos[2] * sz],
-          rot: [sz < 0 ? -obj.rot[0] : obj.rot[0], obj.rot[1] * sx * sz, sx < 0 ? -obj.rot[2] : obj.rot[2]],
-          label: undefined,
-        });
+        const c = build(item, cid, parent, sx, sz);
+        if (!c) { seen.delete(cid); continue; }
+        c.label = undefined;
+        objects.push(c);
         copies[id].push({ id: cid, sx, sz });
       }
     }
@@ -235,7 +465,7 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
   if (!objects.length) return null;
 
   const anims: ShapeAnim[] = [];
-  const animList = Array.isArray(r.anims) ? r.anims : [];
+  const animList = expanded.anims;
   for (const a of animList) {
     if (anims.length >= L.anims) break;
     if (!a || typeof a !== "object") continue;
@@ -294,11 +524,9 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     // as cópias espelhadas fazem o mesmo movimento (caminho espelhado)
     for (const c of copies[target] ?? []) {
       if (anims.length >= L.anims) break;
-      anims.push({
-        ...anim,
-        target: c.id,
-        path: anim.path?.map((p): Vec3 => [p[0] * c.sx, p[1], p[2] * c.sz]),
-      });
+      const copy: ShapeAnim = { ...anim, target: c.id };
+      if (anim.path) copy.path = anim.path.map((p): Vec3 => [p[0] * c.sx, p[1], p[2] * c.sz]);
+      anims.push(copy);
     }
   }
 
@@ -329,4 +557,22 @@ export function safeJson(value: unknown): string {
     .replace(/&/g, "\\u0026")
     .replace(/\u2028/g, "\\u2028")
     .replace(/\u2029/g, "\\u2029");
+}
+
+/*
+  Revisão automática: o que falta a uma cena válida para ensinar bem. Devolve
+  frases curtas que servem de pedido de correcção ao modelo; vazio = boa.
+*/
+export function lintShapes(spec: ShapesSpec): string[] {
+  const issues: string[] = [];
+  const solid = spec.objects.filter((o) => o.shape !== "group");
+  if (solid.length < 8) issues.push(`só tem ${solid.length} peças: decompõe o tema em 14 a 30 peças reais`);
+  if (spec.objects.filter((o) => o.label).length < 3) issues.push("faltam rótulos (label+note) nas peças que a explicação usa");
+  if (spec.captions.length < 3) issues.push("faltam 3 a 6 captions sincronizadas com at_ms");
+  if (!spec.anims.some((a) => a.type === "move" || a.type === "fade" || a.type === "color" || a.type === "orbit" || a.type === "spin"))
+    issues.push("falta animação que mostre a causa e o efeito");
+  const near = (a: ShapeObject, b: ShapeObject) => Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1], a.pos[2] - b.pos[2]);
+  const stray = solid.filter((o) => !o.parent && solid.every((q) => q === o || near(o, q) > 6));
+  if (stray.length >= 2) issues.push("há peças soltas, longe de tudo o resto: aproxima-as do conjunto");
+  return issues;
 }
