@@ -6,8 +6,6 @@
 //
 // Pura (sem React Native, sem three) para poder ser testada em Node.
 
-import { compileExpr } from "./expr";
-
 export type ShapeKind =
   | "sphere"
   | "box"
@@ -22,10 +20,6 @@ export type ShapeKind =
   | "wheel"
   | "gear"
   | "stream"
-  | "lathe"
-  | "extrude"
-  | "tube"
-  | "surface"
   | "group";
 
 // aspecto do material: matte (por defeito), metal, glass (translúcido) ou glow
@@ -64,14 +58,6 @@ export type ShapeObject = {
   speed?: number;
   // gear: número de dentes
   teeth?: number;
-  // lathe: perfil [raio, altura] que gira em torno do eixo Y (garrafas, foguetes, vasos)
-  profile?: [number, number][];
-  // extrude: contorno [x, y] fechado, com espessura size[2] (asas, perfis, logótipos)
-  outline?: [number, number][];
-  // surface: altura y = expr(x, z, t) numa grelha (gráficos, ondas, terreno)
-  expr?: string;
-  extent?: number;
-  grid?: number;
   label?: string;
   // frase curta mostrada ao tocar no objecto no painel grande
   note?: string;
@@ -84,27 +70,7 @@ export type AnimKind =
   | "pulse"
   | "move"
   | "fade"
-  | "color"
-  | "rotate"
-  | "scale"
-  | "swing"
-  | "wave"
-  | "follow"
-  | "keys"
-  | "expr"
-  | "camera";
-
-export type Ease = "linear" | "in" | "out" | "inout" | "elastic" | "back" | "bounce" | "spring";
-
-export type Keyframe = {
-  // milissegundos desde o início desta animação
-  t: number;
-  pos?: Vec3;
-  rot?: Vec3;
-  scale?: Vec3;
-  opacity?: number;
-  color?: ShapeInk;
-};
+  | "color";
 
 export type ShapeAnim = {
   target: string;
@@ -128,35 +94,12 @@ export type ShapeAnim = {
   to_opacity?: number;
   // color
   to_color?: ShapeInk;
-  // suavização do movimento (move/fade/color/rotate/scale/follow/keys/camera)
-  ease?: Ease;
-  // rotate: rotação final em graus; scale: escala final
-  to_rot?: Vec3;
-  to_scale?: Vec3;
-  // swing: amplitude em graus; wave/swing: fase em voltas (0 a 1)
-  deg?: number;
-  phase?: number;
-  // follow: a peça vira-se para onde vai
-  orient?: "x" | "y" | "z";
-  // keys: coreografia por fotogramas-chave
-  frames?: Keyframe[];
-  // expr: deslocamento/rotação(graus)/escala/opacidade como função de t (s) e u (0-1)
-  fx?: { pos?: (string | null)[]; rot?: (string | null)[]; scale?: (string | null)[]; opacity?: string | null };
-  // camera: azimute/elevação em graus, zoom, e o que olhar (id ou ponto)
-  az?: number;
-  el?: number;
-  zoom?: number;
-  look?: string | Vec3;
 };
 
 export type ShapesSpec = {
   objects: ShapeObject[];
   anims: ShapeAnim[];
   camera: "iso" | "front" | "side" | "top";
-  // vista inicial personalizada [azimute, elevação] em graus (substitui a predefinida)
-  view?: [number, number];
-  // a câmara dá uma volta lenta à cena (só no painel grande)
-  turntable?: boolean;
   ground: boolean;
   caption?: string;
   // frases que acompanham a animação: a última com at_ms <= tempo fica visível
@@ -166,17 +109,13 @@ export type ShapesSpec = {
 export const SHAPE_LIMITS = {
   objects: 64,
   anims: 64,
-  captions: 8,
+  captions: 6,
   coord: 6,
   sizeMin: 0.05,
   sizeMax: 4,
   lenMax: 20,
   streamCount: 14,
-  pathPoints: 16,
-  profilePts: 24,
-  outlinePts: 40,
-  frames: 16,
-  cams: 8,
+  pathPoints: 8,
   durationMax: 20000,
   speedMax: 3,
   label: 22,
@@ -186,7 +125,7 @@ export const SHAPE_LIMITS = {
 
 const KINDS: readonly ShapeKind[] = [
   "sphere", "box", "cylinder", "cone", "torus", "ring", "plane", "arrow",
-  "capsule", "rbox", "wheel", "gear", "stream", "lathe", "extrude", "tube", "surface", "group",
+  "capsule", "rbox", "wheel", "gear", "stream", "group",
 ];
 const FINISHES: readonly ShapeFinish[] = ["matte", "metal", "glass", "glow"];
 // formas que se podem definir por dois pontos (from → to), sem rotações
@@ -196,11 +135,7 @@ const INKS: readonly ShapeInk[] = [
 ];
 const ANIMS: readonly AnimKind[] = [
   "spin", "orbit", "bounce", "pulse", "move", "fade", "color",
-  "rotate", "scale", "swing", "wave", "follow", "keys", "expr", "camera",
 ];
-const EASES: readonly Ease[] = ["linear", "in", "out", "inout", "elastic", "back", "bounce", "spring"];
-// animações que acontecem uma vez e ficam no estado final (as outras são contínuas)
-const ONESHOT: readonly AnimKind[] = ["move", "fade", "color", "rotate", "scale", "follow", "keys"];
 const CAMERAS = ["iso", "front", "side", "top"] as const;
 
 function num(v: unknown, d: number): number {
@@ -477,44 +412,6 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
       return obj;
     }
 
-    const pairs = (v: unknown, max: number, lim: [number, number], lim2: [number, number]): [number, number][] =>
-      (Array.isArray(v) ? v : [])
-        .slice(0, max)
-        .filter((q: unknown) => Array.isArray(q))
-        .map((q: any): [number, number] => [clamp(num(q[0], 0), lim[0], lim[1]), clamp(num(q[1], 0), lim2[0], lim2[1])]);
-    if (shape === "lathe") {
-      // raio limitado a metade do tamanho máximo: um perfil com raio 6
-      // (diâmetro 12) ao lado de peças de 2 esmagava a cena toda
-      const prof = pairs(item.profile, L2.profilePts, [0, L2.sizeMax / 2], [-L2.sizeMax, L2.sizeMax]);
-      if (prof.length < 2) return null;
-      obj.profile = prof;
-    }
-    if (shape === "extrude") {
-      const out = pairs(item.outline, L2.outlinePts, [-L2.coord, L2.coord], [-L2.coord, L2.coord]);
-      if (out.length < 3) return null;
-      obj.outline = fx < 0 ? out.map((q): [number, number] => [-q[0], q[1]]).reverse() : out;
-    }
-    if (shape === "tube") {
-      const tp = (Array.isArray(item.pts) ? item.pts : Array.isArray(item.path) ? item.path : [item.from, item.to])
-        .slice(0, L2.pathPoints)
-        .map((q: unknown) => pt(q, fx, fz))
-        .filter((q: Vec3 | null): q is Vec3 => !!q);
-      if (tp.length < 2) return null;
-      obj.pts = tp;
-      const d = clamp(num(Array.isArray(item.size) ? item.size[0] : item.size, 0.12), 0.03, 1);
-      obj.size = [d, d, d];
-      obj.pos = [0, 0, 0];
-      obj.rot = [0, 0, 0];
-      return obj;
-    }
-    if (shape === "surface") {
-      if (!compileExpr(item.expr, ["x", "z", "t"])) return null;
-      obj.expr = String(item.expr).trim();
-      obj.extent = clamp(num(item.extent, 3), 0.5, L2.coord);
-      obj.grid = Math.round(clamp(num(item.grid, 26), 8, 40));
-      obj.size = [1, 1, 1];
-    }
-
     const from = pt(item.from, fx, fz);
     const to = pt(item.to, fx, fz);
     if (from && to && LINEAR.includes(shape)) {
@@ -573,23 +470,6 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     if (anims.length >= L.anims) break;
     if (!a || typeof a !== "object") continue;
     if (!ANIMS.includes(a.type)) continue;
-    const ease: Ease | undefined = EASES.includes(a.ease) ? a.ease : undefined;
-    if (a.type === "camera") {
-      if (anims.filter((q) => q.type === "camera").length >= L.cams) continue;
-      const cam: ShapeAnim = {
-        target: "@camera", type: "camera",
-        at_ms: clamp(num(a.at_ms, 0), 0, L.durationMax),
-        duration_ms: clamp(num(a.duration_ms, 1800), 200, L.durationMax),
-        loop: false, axis: "y", speed: 0, amp: 0, ease,
-      };
-      if (a.az !== undefined && Number.isFinite(Number(a.az))) cam.az = clamp(num(a.az, 0), -720, 720);
-      if (a.el !== undefined && Number.isFinite(Number(a.el))) cam.el = clamp(num(a.el, 20), -85, 89);
-      if (a.zoom !== undefined && Number.isFinite(Number(a.zoom))) cam.zoom = clamp(num(a.zoom, 1), 0.4, 3);
-      if (typeof a.look === "string" && seen.has(cleanId(a.look))) cam.look = cleanId(a.look);
-      else if (Array.isArray(a.look)) cam.look = vec(a.look, [0, 0, 0], -L.coord, L.coord);
-      anims.push(cam);
-      continue;
-    }
     const target = cleanId(a.target);
     if (!seen.has(target)) continue;
 
@@ -600,8 +480,9 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
       duration_ms: clamp(num(a.duration_ms, 0), 0, L.durationMax),
       // spin/orbit/bounce/pulse são contínuos; move/fade/color acontecem uma
       // vez e ficam no estado final, a não ser que peça "vai e volta"
-      loop: ONESHOT.includes(a.type) ? a.loop === true : true,
-      ease,
+      loop: a.type === "move" || a.type === "fade" || a.type === "color"
+        ? a.loop === true
+        : true,
       axis: a.axis === "x" || a.axis === "z" ? a.axis : "y",
       speed: clamp(num(a.speed, 0.5), -L.speedMax, L.speedMax),
       amp: clamp(num(a.amp, a.type === "pulse" ? 0.2 : 0.5), 0, 3),
@@ -639,76 +520,12 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
       if (anim.duration_ms < 300) anim.duration_ms = 1200;
     }
 
-    if (a.type === "rotate") {
-      if (!Array.isArray(a.to_rot)) continue;
-      anim.to_rot = vec(a.to_rot, [0, 0, 0], -720, 720);
-      if (anim.duration_ms < 300) anim.duration_ms = 1500;
-    }
-
-    if (a.type === "scale") {
-      const s = Array.isArray(a.to_scale) ? vec(a.to_scale, [1, 1, 1], 0.05, 4) : (() => { const k = clamp(num(a.to_scale, 1), 0.05, 4); return [k, k, k] as Vec3; })();
-      anim.to_scale = s;
-      if (anim.duration_ms < 300) anim.duration_ms = 1500;
-    }
-
-    if (a.type === "swing" || a.type === "wave") {
-      anim.deg = clamp(num(a.deg, 25), 0, 180);
-      anim.phase = clamp(num(a.phase, 0), 0, 1);
-    }
-
-    if (a.type === "follow") {
-      const path = (Array.isArray(a.path) ? a.path : [])
-        .slice(0, L.pathPoints)
-        .filter((q: unknown) => Array.isArray(q))
-        .map((q: unknown) => vec(q, [0, 0, 0], -L.coord, L.coord));
-      if (!path.length) continue;
-      anim.path = path;
-      anim.orient = a.orient === "y" || a.orient === "z" ? a.orient : a.orient === true || a.orient === "x" ? "x" : undefined;
-      if (anim.duration_ms < 300) anim.duration_ms = 3000;
-    }
-
-    if (a.type === "keys") {
-      const fr: Keyframe[] = [];
-      for (const f of (Array.isArray(a.frames) ? a.frames : []).slice(0, L.frames)) {
-        if (!f || typeof f !== "object") continue;
-        const k: Keyframe = { t: clamp(num(f.t, 0), 0, L.durationMax) };
-        if (Array.isArray(f.pos)) k.pos = vec(f.pos, [0, 0, 0], -L.coord, L.coord);
-        if (Array.isArray(f.rot)) k.rot = vec(f.rot, [0, 0, 0], -720, 720);
-        if (Array.isArray(f.scale)) k.scale = vec(f.scale, [1, 1, 1], 0.05, 4);
-        else if (f.scale !== undefined) { const s = clamp(num(f.scale, 1), 0.05, 4); k.scale = [s, s, s]; }
-        if (f.opacity !== undefined) k.opacity = clamp(num(f.opacity, 1), 0, 1);
-        if (f.color !== undefined) k.color = ink(f.color, "blue");
-        if (k.pos || k.rot || k.scale || k.opacity !== undefined || k.color) fr.push(k);
-      }
-      if (fr.length < 2) continue;
-      fr.sort((p, q) => p.t - q.t);
-      anim.frames = fr;
-      anim.duration_ms = Math.max(300, fr[fr.length - 1].t);
-    }
-
-    if (a.type === "expr") {
-      const src = (a.fx && typeof a.fx === "object" ? a.fx : a) as Record<string, any>;
-      const ok = (e: unknown) => (compileExpr(e, ["t", "u"]) && typeof e === "string" ? e.trim() : null);
-      const three = (v: unknown) => (Array.isArray(v) ? [ok(v[0]), ok(v[1]), ok(v[2])] : undefined);
-      const fxo: NonNullable<ShapeAnim["fx"]> = {};
-      const pos = three(src.pos), rot = three(src.rot);
-      if (pos && pos.some(Boolean)) fxo.pos = pos;
-      if (rot && rot.some(Boolean)) fxo.rot = rot;
-      const sc = Array.isArray(src.scale) ? three(src.scale) : src.scale !== undefined ? (() => { const e = ok(src.scale); return e ? [e, e, e] : undefined; })() : undefined;
-      if (sc && sc.some(Boolean)) fxo.scale = sc;
-      const op = ok(src.opacity);
-      if (op) fxo.opacity = op;
-      if (!fxo.pos && !fxo.rot && !fxo.scale && !fxo.opacity) continue;
-      anim.fx = fxo;
-    }
-
     anims.push(anim);
     // as cópias espelhadas fazem o mesmo movimento (caminho espelhado)
     for (const c of copies[target] ?? []) {
       if (anims.length >= L.anims) break;
       const copy: ShapeAnim = { ...anim, target: c.id };
       if (anim.path) copy.path = anim.path.map((p): Vec3 => [p[0] * c.sx, p[1], p[2] * c.sz]);
-      if (anim.frames) copy.frames = anim.frames.map((f) => (f.pos ? { ...f, pos: [f.pos[0] * c.sx, f.pos[1], f.pos[2] * c.sz] as Vec3 } : f));
       anims.push(copy);
     }
   }
@@ -725,10 +542,6 @@ export function sanitizeShapes(raw: unknown): ShapesSpec | null {
     objects,
     anims,
     camera: CAMERAS.includes(r.camera) ? r.camera : "iso",
-    view: Array.isArray(r.view) && r.view.length >= 2
-      ? [clamp(num(r.view[0], 0), -720, 720), clamp(num(r.view[1], 20), -85, 89)]
-      : undefined,
-    turntable: r.turntable === true ? true : undefined,
     ground: r.ground === true,
     caption,
     captions,
@@ -756,33 +569,10 @@ export function lintShapes(spec: ShapesSpec): string[] {
   if (solid.length < 8) issues.push(`só tem ${solid.length} peças: decompõe o tema em 14 a 30 peças reais`);
   if (spec.objects.filter((o) => o.label).length < 3) issues.push("faltam rótulos (label+note) nas peças que a explicação usa");
   if (spec.captions.length < 3) issues.push("faltam 3 a 6 captions sincronizadas com at_ms");
-  if (!spec.anims.some((a) => a.type !== "camera"))
+  if (!spec.anims.some((a) => a.type === "move" || a.type === "fade" || a.type === "color" || a.type === "orbit" || a.type === "spin"))
     issues.push("falta animação que mostre a causa e o efeito");
   const near = (a: ShapeObject, b: ShapeObject) => Math.hypot(a.pos[0] - b.pos[0], a.pos[1] - b.pos[1], a.pos[2] - b.pos[2]);
   const stray = solid.filter((o) => !o.parent && solid.every((q) => q === o || near(o, q) > 6));
   if (stray.length >= 2) issues.push("há peças soltas, longe de tudo o resto: aproxima-as do conjunto");
-  // Escala: uma peça gigante esmaga tudo o resto (a câmara afasta-se para a
-  // enquadrar e as outras ficam pontos). Mede-se o tamanho visível de cada
-  // peça — perfis e contornos incluídos — e compara-se com a mediana.
-  const extent = (o: ShapeObject): number => {
-    if (o.shape === "lathe" && o.profile?.length) {
-      const r = Math.max(...o.profile.map((q) => Math.abs(q[0])));
-      const h = Math.max(...o.profile.map((q) => Math.abs(q[1])));
-      return Math.max(2 * r, 2 * h);
-    }
-    if (o.shape === "extrude" && o.outline?.length) {
-      const x = Math.max(...o.outline.map((q) => Math.abs(q[0])));
-      const y = Math.max(...o.outline.map((q) => Math.abs(q[1])));
-      return Math.max(2 * x, 2 * y, Math.abs(o.size[2] ?? 0.2));
-    }
-    return Math.max(...o.size.map((v) => Math.abs(v)));
-  };
-  const sizes = solid.map(extent).sort((x, y) => x - y);
-  const median = sizes[Math.floor(sizes.length / 2)] || 1;
-  const giant = solid.filter((o) => extent(o) > 14 || extent(o) > Math.max(6, median * 8));
-  if (giant.length) {
-    const pior = Math.max(...giant.map(extent)).toFixed(0);
-    issues.push(`peças fora de escala (até ${pior} unidades): usa uma escala única, o objecto principal com 3 a 8 unidades`);
-  }
   return issues;
 }

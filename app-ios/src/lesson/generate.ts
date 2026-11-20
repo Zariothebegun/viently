@@ -2,7 +2,7 @@ import { pickShapeExamples } from "./shapesExamples";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Check, Ink, Lesson, Op, Size, Step } from "../board/ops";
 import { SURFACE_FNS } from "../board/plot3d";
-import { lintShapes, sanitizeShapes, type ShapesSpec } from "../three/shapes";
+import { lintShapes, sanitizeShapes } from "../three/shapes";
 import { lessonSystem } from "./prompt";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -45,7 +45,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v30";
+const CACHE_KEY = "viently.lessons.v29";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -67,7 +67,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v30|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v29|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -609,8 +609,6 @@ export type GenerateInput = {
   // profundidade da página: 1 intuição, 2 mecanismo, 3 números, 4 falhas,
   // 5 compromissos; daí para cima é aprofundamento livre
   depth?: number;
-  // recebe a cena 3D a crescer, peça a peça, enquanto a aula é escrita
-  onScene?: (spec: ShapesSpec) => void;
 };
 
 // Contrato para o response_format: uma página inteira, sem steps. O "board"
@@ -831,21 +829,22 @@ async function callGemini(
 // fazia o modelo cortar a cena a meio (5 a 8 peças em vez das 12 a 30 pedidas)
 // ou devolver JSON inválido; aqui a única tarefa é geometria.
 export const SHAPES_SYSTEM = [
-  "Desenhas uma cena 3D didáctica com formas simples e animação coreografada. Respondes APENAS com um objecto JSON compacto numa só linha, nunca código.",
-  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso|front|side|top","view":[azimute°,elevação°]?,"turntable":true?,"ground":true?}.',
-  "Objecto: {id, shape, parent?, pos:[x,y,z], size:número|[x,y,z], rot?:[x,y,z graus], color, opacity?, finish?, mirror?:'x'|'z'|'xz', from?, to?, repeat?, on?, label?, note?}. Cores: ink blue red green orange purple gray yellow.",
-  "Formas básicas: sphere, box, rbox, cylinder, capsule, cone, torus (size [diâmetro, espessura do tubo, diâmetro]), ring, plane, arrow (+y), group (agrupa; sem malha), wheel (eixo z; size [diâmetro, largura, diâmetro]), gear (teeth 6-24, eixo z), stream (partículas de from a to ou por path; count 3-14).",
-  "Formas livres (servem para qualquer coisa): lathe {profile:[[raio,y],…]} gira um perfil em torno de y (garrafas, foguetes, vasos, torres, peões); extrude {outline:[[x,y],…] polígono, size:[escala x, escala y, espessura]} (asas, barbatanas, engrenagens, silhuetas, letras); tube {path:[[x,y,z],…], size = espessura} curva suave (veias, fios, carris, mangueiras, molas); surface {expr:'f(x,z,t)', extent, grid} altura y = expressão (ondas, terreno, gráficos de funções, campos).",
-  "finish: matte, metal, glass (translúcido), glow (luz/energia). from/to [x,y,z] ligam dois pontos em cylinder, capsule, box, rbox, arrow. repeat {n, step:[x,y,z], around:'y', angle, center, cols, row_step} cria padrões (anel, hélice, grelha, fila). on {id, at:'top|bottom|left|right|front|back', gap} põe uma peça junto a outra.",
-  "ANIMAÇÕES (todas com at_ms, duration_ms, ease: linear|in|out|inout|elastic|back|bounce|spring): spin, orbit (around|center), bounce, pulse, swing (axis, deg, speed: pêndulo), wave (axis, amp, speed), move (path), follow (path de pontos: curva suave; orient:'x|y|z' vira a peça para onde vai), rotate (to_rot graus), scale (to_scale), fade (to_opacity), color (to_color), keys (frames:[{t ms, pos, rot, scale, opacity, color}]: coreografia de vários passos numa só peça).",
-  "LIBERDADE TOTAL: {type:'expr', target, pos:['ex','ey','ez'], rot:[…graus], scale:'e', opacity:'e'} aplica expressões de t (segundos) e u (0-1 se houver duration_ms) por cima do resto: movimentos físicos exactos (mola amortecida '-0.7*exp(-0.2*t)*cos(3*t)', projéctil, lissajous, tremor '0.03*sin(t*55)'). Funções: sin cos tan abs sqrt exp log pow min max mix clamp smooth step fract mod atan2 rnd; constantes pi tau e; operadores + - * / % ^.",
-  "CÂMARA: {type:'camera', az, el, zoom, look:'id'|[x,y,z], at_ms, duration_ms, ease} move a câmara durante a explicação (aproxima da peça de que falas, roda para mostrar o outro lado, afasta no fim). Começa com um plano geral e usa 2 a 4 movimentos.",
-  "MÉTODO: (1) decompõe o real em 14 a 40 peças com proporções verdadeiras (x comprimento, y altura, z largura; 1 unidade ≈ 1 m); prefere formas livres a caixas quando o real é curvo; (2) group + parent agrupa o que se move junto; mirror/repeat para simetrias e padrões; (3) cascas em glass para se ver o interior; (4) mostra a CAUSA com setas e streams (azul fluido, verde força útil, vermelho peso/perda, laranja energia) que entram com opacity 0 + fade por ordem;",
-  "(5) a animação conta uma história em 3 a 5 fases ao longo de 6 a 14 segundos (preparação → causa → efeito → resultado) e termina no efeito visível; (6) captions: 3 a 8 frases curtas sincronizadas com at_ms, uma por fase; (7) label (≤22 caracteres) em 4 a 8 peças que a explicação usa, cada uma com note que ensina; (8) conceitos abstractos (algoritmos, memória, economia, tempo): usa metáforas visuais (barras, caixas, camadas, setas, filas) e movimento para mostrar o processo.",
-  "Eixos: x direita, y cima, z para ti; câmara front vê o plano x-y (pontes, mecanismos, esquemas); iso mostra volume; top para órbitas. Máx. 64 objectos. O objecto principal ocupa 60% a 80% da cena. Rótulos em português. Nada de texto fora do JSON.",
-  "ESCALA ÚNICA (importante): todas as peças entre 0,1 e 6 unidades e o objecto principal entre 3 e 8; perfis lathe e contornos extrude também. Nunca uma peça gigante (mais de 10) ao lado de peças pequenas: a câmara afasta-se e o desenho perde-se.",
+  "Desenhas uma cena 3D didáctica montada só com formas simples. Respondes APENAS com um objecto JSON compacto, numa só linha.",
+  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso|front|side|top","ground":true}.',
+  "Objecto: {id, shape, parent?, pos:[x,y,z], size:número|[x,y,z], rot?:[x,y,z graus], color, opacity?, finish?, mirror?:'x'|'z'|'xz', from?, to?, label?, note?}.",
+  "Formas: sphere, box, rbox (caixa arredondada), cylinder, capsule, cone, torus, ring, plane, arrow (+y), group, wheel (roda com pneu e jante; size [diâmetro,largura,diâmetro]), gear (teeth 6-24), stream (partículas que correm de from a to, ou por path de pontos; count 3-14, size = tamanho da partícula).",
+  "finish: matte (omissão), metal, glass (translúcido: deixa ver o interior), glow (luz, energia, fluxo).",
+  "from/to [x,y,z] em cylinder, capsule, box, rbox e arrow ligam dois pontos (tubos, fios, hastes, setas) sem calcular rotações.",
+  "MÉTODO: (1) decompõe o objecto real em 14 a 30 peças com proporções reais (x comprimento, y altura, z largura, 1 unidade ≈ 1 metro): corpo, partes funcionais, cada roda/pá/tubo/apoio;",
+  "(2) um group + parent agrupa o que se move junto; mirror repete peças simétricas (rodas, asas, pernas) e as animações também;",
+  "(3) invólucros e cascas em finish glass para o interior se ver; (4) mostra a CAUSA com setas e streams: azul = fluido/entrada, verde = resultado/força útil, vermelho = peso/perda, laranja = energia; entram com opacity 0 + anim fade por ordem (at_ms crescente);",
+  "(5) acaba no efeito visível (sobe, sai, orbita, acende); (6) captions: 3 a 6 frases curtas sincronizadas com at_ms; (7) label (≤22 caracteres) só em 4 a 8 peças que a explicação usa, cada uma com note que ensina.",
+  "Anims: spin (axis, speed), orbit (around, speed), bounce (axis, amp, speed), pulse (amp, speed), move (path, duration_ms), fade (to_opacity, duration_ms), color (to_color, duration_ms); at_ms atrasa; move/fade/color ficam no fim, loop:true faz vai-e-volta.",
+  "Serve para qualquer tema: máquinas, circuitos (fios = cylinder from/to, cargas = stream por path fechado), órgãos, órbitas, estruturas, camadas. Máx. 48 objectos.",
+  "O objecto principal ocupa 60% a 80% da cena; setas e etiquetas menores que metade dele. Rótulos em português. Nada de texto fora do JSON.",
+  "Eixos: x = direita, y = cima, z = para ti; a câmara front vê o plano x-y (usa-a para pontes, engrenagens, esquemas); iso mostra volume; top, órbitas. O eixo de wheel e gear é o z; torus size [diâmetro, espessura do tubo, diâmetro] é um anel horizontal.",
   "ESCREVE MENOS E FICA IGUAL: mirror:'x'|'z'|'xz' numa peça cria as cópias simétricas (rodas, asas, pernas, parafusos); repeat:{n,step:[x,y,z],cols?,row_step?,around?:'x'|'y'|'z',center?,angle?} faz fileiras, colunas, grelhas e rodas de peças iguais; on:{id,at:'top'|'bottom'|'left'|'right'|'front'|'back',gap?} encaixa a peça em cima de outra. Usa sempre estes atalhos em vez de escrever peças repetidas uma a uma (mesmo desenho, resposta mais curta).",
-  "Não copies os exemplos: imita o nível de detalhe e a lógica (peças reais, causa → efeito, câmara e legendas sincronizadas) para o tema pedido.",
+  "Não copies os exemplos: imita só o nível de detalhe e a lógica (peças reais, causa → efeito, legendas sincronizadas) para o tema pedido.",
 ].join(" ");
 
 export function shapesSystemFor(prompt: string): string {
@@ -866,151 +865,7 @@ function extractObject(text: string): any | null {
   }
 }
 
-
-/* ---------------------------------------------------------------
-   Leitura da cena à medida que o modelo a escreve.
-
-   O Gemini web devolve a resposta em pedaços (o primeiro chega aos
-   ~16 s, as peças continuam a chegar durante ~9 s). Em vez de esperar
-   pelo fim, cada peça completa que aparece no texto é logo transformada
-   numa cena parcial: o desenho cresce no ecrã enquanto a aula é escrita.
-   --------------------------------------------------------------- */
-
-// objectos completos já escritos dentro de "objects": [ ... ]
-export function partialObjects(text: string): any[] {
-  const key = text.indexOf('"objects"');
-  if (key < 0) return [];
-  const start = text.indexOf("[", key);
-  if (start < 0) return [];
-  const out: any[] = [];
-  let depth = 0, inStr = false, esc = false, objStart = -1;
-  for (let i = start + 1; i < text.length; i++) {
-    const c = text[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') { inStr = true; continue; }
-    if (c === "{" || c === "[") {
-      if (depth === 0 && c === "{") objStart = i;
-      depth++;
-    } else if (c === "}" || c === "]") {
-      depth--;
-      if (depth <= 0 && c === "]") break;        // fim da lista
-      if (depth === 0 && objStart >= 0) {
-        try { out.push(JSON.parse(text.slice(objStart, i + 1))); } catch { /* ignora */ }
-        objStart = -1;
-      }
-    }
-  }
-  return out;
-}
-
-function partialScene(text: string, seen: number): { spec: ShapesSpec | null; n: number } {
-  const objs = partialObjects(text);
-  if (objs.length <= seen) return { spec: null, n: seen };
-  const head = text.match(/"camera"\s*:\s*"(iso|front|side|top)"/);
-  const spec = sanitizeShapes({
-    objects: objs,
-    anims: [],
-    camera: head ? head[1] : "iso",
-    ground: !/"ground"\s*:\s*false/.test(text),
-    captions: [],
-  });
-  return { spec: spec && spec.objects.length ? spec : null, n: objs.length };
-}
-
-async function readStream(
-  res: Response,
-  onText: (text: string) => void,
-): Promise<string | null> {
-  const body: any = (res as any).body;
-  if (!body || typeof body.getReader !== "function") return null;
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let text = "", buf = "";
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const parts = buf.split("\n\n");
-    buf = parts.pop() ?? "";
-    for (const part of parts) {
-      const line = part.split("\n").find((l) => l.startsWith("data:"));
-      if (!line) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === "[DONE]") continue;
-      try {
-        const j = JSON.parse(data);
-        const d = j?.choices?.[0]?.delta?.content;
-        if (typeof d === "string" && d) {
-          text += d;
-          onText(text);
-        }
-        if (j?.error?.message) throw new Error(String(j.error.message));
-      } catch (e: any) {
-        if (e && typeof e.message === "string" && /^stream |API local|Gemini/.test(e.message)) throw e;
-      }
-    }
-  }
-  return text;
-}
-
-async function askShapesStream(
-  prompt: string,
-  deadline: number,
-  onScene?: (spec: ShapesSpec) => void,
-): Promise<any | null> {
-  if (!API_BASE || !onScene) return null;
-  let seen = 0, lastAt = 0;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), Math.max(30000, deadline - Date.now()));
-  try {
-    const res = await fetch(API_BASE + "/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: ctrl.signal,
-      body: JSON.stringify({
-        model: API_MODEL || "gemini-web",
-        temperature: 0.5,
-        stream: true,
-        messages: [
-          { role: "system", content: shapesSystemFor(prompt) },
-          { role: "user", content: prompt },
-        ],
-      }),
-    });
-    if (!res.ok) throw new Error("stream " + res.status);
-    const text = await readStream(res, (acc) => {
-      const agora = Date.now();
-      if (agora - lastAt < 260) return;
-      const { spec, n } = partialScene(acc, seen);
-      if (!spec) return;
-      seen = n;
-      lastAt = agora;
-      onScene(spec);
-    });
-    if (!text) return null;
-    const obj = extractObject(text);
-    if (obj) {
-      const final = sanitizeShapes(obj);
-      if (final) onScene(final);
-      return obj;
-    }
-    return null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function askShapes(prompt: string, deadline: number, onScene?: (spec: ShapesSpec) => void): Promise<any | null> {
-  const viaStream = await askShapesStream(prompt, deadline, onScene);
-  if (viaStream) return viaStream;
-
+async function askShapes(prompt: string, deadline: number): Promise<any | null> {
   const targets: Array<() => Promise<string>> = [];
 
   if (API_BASE) {
@@ -1045,7 +900,7 @@ async function askShapes(prompt: string, deadline: number, onScene?: (spec: Shap
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: shapesSystemFor(prompt) }] },
               contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.5, maxOutputTokens: 8192 },
+              generationConfig: { temperature: 0.5, maxOutputTokens: 6144 },
             }),
           },
         );
@@ -1142,11 +997,7 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   ]
     .filter(Boolean)
     .join("\n");
-  const cenaEmParalelo: Promise<any | null> = askShapes(
-    pedidoCena,
-    Date.now() + 150000,
-    input.onScene,
-  ).catch(
+  const cenaEmParalelo: Promise<any | null> = askShapes(pedidoCena, Date.now() + 150000).catch(
     () => null,
   );
 
