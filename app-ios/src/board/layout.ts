@@ -400,6 +400,9 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     }
     placed.push({ b, w: 1 });
   }
+  // O desenho 3D reserva-se com peso alto: caixas e formas desviam-se dele em
+  // vez de ficarem por cima das peças e das pílulas.
+  for (const m of modelRegions) placed.push({ b: m, w: 6 });
 
   // 1. formas procuram espaço
   for (const op of work) {
@@ -674,6 +677,10 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
     const estW = raw[2] - raw[0];
     const estH = raw[3] - raw[1];
     const center = op.align === "center";
+    // Sobrepor o desenho 3D nunca é aceitável: as peças e as pílulas já
+    // ocupam essa área toda. Pesa muito para o texto procurar outro sítio.
+    const onModel = (bb: Box) =>
+      modelRegions.reduce((acc, m) => acc + overlapArea(bb, m), 0);
 
     let bestPos: Pt = origAt;
     let bestScore = Infinity;
@@ -681,7 +688,7 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       const pos = fitX([origAt[0] + dx, origAt[1] + dy], estW, estH, center);
       const probe = { ...op, at: pos };
       const bb = opBBox(probe)!;
-      const sc = score(bb, placed);
+      const sc = score(bb, placed) + onModel(bb) * 60;
       if (sc <= 0.5) {
         bestPos = pos;
         bestScore = sc;
@@ -699,7 +706,9 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
           const pos = fitX([px, py], estW, estH, center);
           const bb = opBBox({ ...op, at: pos })!;
           const sc =
-            score(bb, placed) + 0.03 * (Math.abs(px - origAt[0]) + Math.abs(py - origAt[1]));
+            score(bb, placed) +
+            onModel(bb) * 60 +
+            0.03 * (Math.abs(px - origAt[0]) + Math.abs(py - origAt[1]));
           if (sc < bestScore) {
             bestScore = sc;
             bestPos = pos;
@@ -713,6 +722,12 @@ export function layoutPass(ops: Op[], prior: Placed[]): LayoutResult {
       continue;
     }
     op.at = bestPos;
+    const chosen = opBBox(op)!;
+    if (onModel(chosen) > 10) {
+      const lowest = modelRegions.reduce((acc, m) => Math.max(acc, m[3]), 0);
+      const y = Math.min(73 - estH / 2, lowest + estH / 2 + 1.5);
+      op.at = fitX([bestPos[0], y], estW, estH, center);
+    }
     const fb = opBBox(op)!;
     placed.push({ b: [fb[0] - 1.8, fb[1] - 1.8, fb[2] + 1.8, fb[3] + 1.8], w: 1 });
     if (op.label_at) {

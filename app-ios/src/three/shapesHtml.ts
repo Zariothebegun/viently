@@ -9,6 +9,7 @@
 //   "modal"  — painel grande: arrastar roda, pinça aproxima, toque numa forma
 //              mostra a sua nota
 
+import { EXPR_RUNTIME } from "./expr";
 import { safeJson, sanitizeShapes, type ShapesSpec } from "./shapes";
 
 export type ShapesMode = "inline" | "modal";
@@ -22,7 +23,23 @@ const post = function (m) {
   try { window.ReactNativeWebView.postMessage(JSON.stringify(m)); } catch (e) {}
 };
 const clamp = function (v, a, b) { return v < a ? a : v > b ? b : v; };
-const ease = function (u) { return u * u * (3 - 2 * u); };
+const EASE = {
+  linear: function (u) { return u; },
+  "in": function (u) { return u * u * u; },
+  out: function (u) { const v = 1 - u; return 1 - v * v * v; },
+  inout: function (u) { return u * u * (3 - 2 * u); },
+  elastic: function (u) { return u <= 0 ? 0 : u >= 1 ? 1 : Math.pow(2, -10 * u) * Math.sin((u * 10 - 0.75) * (2 * Math.PI / 3)) + 1; },
+  back: function (u) { const c1 = 1.70158, c3 = c1 + 1, v = u - 1; return 1 + c3 * v * v * v + c1 * v * v; },
+  bounce: function (u) {
+    const n = 7.5625, d = 2.75;
+    if (u < 1 / d) return n * u * u;
+    if (u < 2 / d) { u -= 1.5 / d; return n * u * u + 0.75; }
+    if (u < 2.5 / d) { u -= 2.25 / d; return n * u * u + 0.9375; }
+    u -= 2.625 / d; return n * u * u + 0.984375;
+  },
+  spring: function (u) { return u >= 1 ? 1 : 1 - Math.exp(-6 * u) * Math.cos(u * 11); }
+};
+const ease = function (u, name) { return (EASE[name] || EASE.inout)(clamp(u, 0, 1)); };
 const RAD = Math.PI / 180;
 
 const stage = document.getElementById("stage");
@@ -130,6 +147,19 @@ if (renderer) {
     );
   };
 
+  // casca do contorno com normais contínuas (sem buracos nas arestas vivas)
+  const HULLS = new Map();
+  function hullOf(g) {
+    if (HULLS.has(g)) return HULLS.get(g);
+    let h = g.clone();
+    h.deleteAttribute("normal");
+    h.deleteAttribute("uv");
+    h = mergeVertices(h, 1e-4);
+    h.computeVertexNormals();
+    HULLS.set(g, h);
+    return h;
+  }
+
   function makeMat(o, flat) {
     const f = o.finish || "matte";
     const m = new THREE.MeshStandardMaterial({
@@ -151,9 +181,9 @@ if (renderer) {
   const dummy = new THREE.Object3D();
 
   SPEC.objects.forEach(function (o) {
-    const flat = o.shape === "ring" || o.shape === "plane";
+    const flat = o.shape === "ring" || o.shape === "plane" || o.shape === "lathe";
     const glass = o.finish === "glass";
-    const noHull = flat || o.wire || glass || o.finish === "glow";
+    const noHull = (flat && o.shape !== "lathe") || o.shape === "surface" || o.wire || glass || o.finish === "glow";
     const mat = makeMat(o, flat);
     const mats = [mat];
     // g: posição/rotação (os filhos ficam aqui); sc: só as malhas desta forma
@@ -162,6 +192,10 @@ if (renderer) {
     g.add(sc);
     const hulls = [];
     let stream = null;
+    let surf = null;
+    let customReach = 0;
+    let anchorPt = null;
+    let fitC = null;
     const sx = o.size[0], sy = o.size[1], sz = o.size[2];
 
     function add(kind, material, hull, extra) {
@@ -202,6 +236,43 @@ if (renderer) {
       add("spokes", metal, false);
     } else if (o.shape === "gear") {
       add("gear", mat, true, o.teeth || 12);
+    } else if (o.shape === "lathe") {
+      let pr = o.profile.slice();
+      if (pr[0][1] > pr[pr.length - 1][1]) pr.reverse();
+      const gm = new THREE.LatheGeometry(pr.map(function (q) { return new THREE.Vector2(Math.max(0.001, q[0] * sx), q[1] * sy); }), INLINE ? 22 : 36);
+      const m = new THREE.Mesh(gm, mat);
+      m.userData.oid = o.id; sc.add(m); meshes.push(m);
+      if (!noHull) { const h = new THREE.Mesh(gm, outlineMat); sc.add(h); hulls.push(h); }
+      gm.computeBoundingSphere(); customReach = gm.boundingSphere.radius; anchorPt = gm.boundingSphere.center.clone();
+    } else if (o.shape === "extrude") {
+      const sh = new THREE.Shape(o.outline.map(function (q) { return new THREE.Vector2(q[0] * sx, q[1] * sy); }));
+      const bv = Math.min(sx, sy, sz) * 0.06;
+      const gm = new THREE.ExtrudeGeometry(sh, { depth: sz, bevelEnabled: true, bevelThickness: bv, bevelSize: bv, bevelSegments: 2, curveSegments: 6 });
+      gm.translate(0, 0, -sz / 2);
+      const m = new THREE.Mesh(gm, mat);
+      m.userData.oid = o.id; sc.add(m); meshes.push(m);
+      if (!noHull) { const h = new THREE.Mesh(hullOf(gm), outlineMat); sc.add(h); hulls.push(h); }
+      gm.computeBoundingSphere(); customReach = gm.boundingSphere.radius; anchorPt = gm.boundingSphere.center.clone();
+    } else if (o.shape === "tube") {
+      const tp = o.pts.map(function (q) { return new THREE.Vector3(q[0], q[1], q[2]); });
+      const gm = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(tp, false, "centripetal"), Math.min(140, tp.length * 12), Math.max(0.015, sx / 2), INLINE ? 6 : 10, false);
+      const m = new THREE.Mesh(gm, mat);
+      m.userData.oid = o.id; sc.add(m); meshes.push(m);
+      if (!noHull) { const h = new THREE.Mesh(gm, outlineMat); sc.add(h); hulls.push(h); }
+      gm.computeBoundingSphere(); customReach = gm.boundingSphere.radius; fitC = gm.boundingSphere.center.clone();
+      anchorPt = new THREE.CatmullRomCurve3(tp, false, "centripetal").getPoint(0.5);
+    } else if (o.shape === "surface") {
+      const N = INLINE ? Math.min(o.grid, 26) : o.grid, ext = o.extent;
+      const gm = new THREE.PlaneGeometry(ext * 2, ext * 2, N, N);
+      gm.rotateX(-Math.PI / 2);
+      const n = gm.attributes.position.count;
+      gm.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+      mat.vertexColors = true;
+      const fn = compileExpr(o.expr, ["x", "z", "t"]);
+      surf = { gm: gm, fn: fn, n: n, vars: { x: 0, z: 0, t: 0 }, anim: /\bt\b/.test(o.expr), base: new THREE.Color(PAL[o.color]), last: -1 };
+      const m = new THREE.Mesh(gm, mat);
+      m.userData.oid = o.id; sc.add(m); meshes.push(m);
+      customReach = ext * 1.2;
     } else if (o.shape === "stream") {
       const pts = o.pts.map(function (p) { return new THREE.Vector3(p[0], p[1], p[2]); });
       const lens = [0];
@@ -220,18 +291,19 @@ if (renderer) {
     const par = o.parent && byId[o.parent] ? byId[o.parent] : null;
     (par ? par.g : scene).add(g);
 
-    const reach = o.shape === "group" ? 0
+    const reach = customReach > 0 ? customReach
+      : o.shape === "group" ? 0
       : o.shape === "arrow" ? Math.max(sy, sx) * 0.55
       : Math.max(sx, sy, sz) * 0.55;
 
     const it = {
-      o: o, g: g, sc: sc, mat: mat, mats: mats, hulls: hulls, stream: stream, reach: reach, par: par,
+      o: o, g: g, sc: sc, mat: mat, mats: mats, hulls: hulls, stream: stream, surf: surf, reach: reach, par: par,
       basePos: basePos, baseScale: new THREE.Vector3(1, 1, 1),
       baseRot: new THREE.Euler(o.rot[0] * RAD, o.rot[1] * RAD, o.rot[2] * RAD),
       baseColor: new THREE.Color(PAL[o.color]),
       emi: mat.emissive.clone(), glass: glass,
       // ponto a que a etiqueta se liga: o meio do percurso, nas partículas
-      anchor: stream ? stream.pts[0].clone().lerp(stream.pts[stream.pts.length - 1], 0.55) : null,
+      anchor: stream ? stream.pts[0].clone().lerp(stream.pts[stream.pts.length - 1], 0.55) : anchorPt, fitC: fitC || anchorPt,
       op: o.opacity, eff: o.opacity, mayFade: o.opacity < 1,
       pill: null, pw: 0, ph: 0, line: null, dot: null, vis: true
     };
@@ -277,7 +349,7 @@ if (renderer) {
   const wp = function (it) { return it.g.getWorldPosition(new THREE.Vector3()); };
   // Pontos usados no enquadramento final (posições e trajectórias).
   const fitPts = [];
-  items.forEach(function (it) { fitPts.push({ p: wp(it), r: Math.max(0.15, it.reach) }); });
+  items.forEach(function (it) { fitPts.push({ p: it.fitC ? it.g.localToWorld(it.fitC.clone()) : wp(it), r: Math.max(0.15, it.reach) }); });
   SPEC.anims.forEach(function (a) {
     const it = byId[a.target];
     if (!it) return;
@@ -329,7 +401,7 @@ if (renderer) {
   const PRESET = {
     iso: [0.72, 1.12], front: [0, Math.PI / 2], side: [Math.PI / 2, Math.PI / 2], top: [0.0, 0.18]
   };
-  const start = PRESET[SPEC.camera] || PRESET.iso;
+  const start = SPEC.view ? [SPEC.view[0] * RAD, (90 - SPEC.view[1]) * RAD] : (PRESET[SPEC.camera] || PRESET.iso);
   let az = start[0], pol = start[1], zoom = 1, fitDist = 6;
   let W = 1, H = 1;
 
@@ -425,6 +497,8 @@ if (renderer) {
   // Ajuste final pela projecção real: se algum ponto da cena (ou da sua
   // trajectória) sai do quadro, afasta; se enche pouco, aproxima.
   function calibrate() {
+    const savedT = curT;
+    curT = -1;
     const vf = camera.fov * RAD;
     for (let pass = 0; pass < 2; pass++) {
       updateCamera();
@@ -440,31 +514,68 @@ if (renderer) {
         const rx = ry / Math.max(0.2, camera.aspect);
         maxNdc = Math.max(maxNdc, Math.abs(q.x) + rx, Math.abs(q.y) + ry);
       });
-      if (!(maxNdc > 0.02)) return;
+      if (!(maxNdc > 0.02)) { curT = savedT; return; }
       fitDist = fitDist * (maxNdc / 0.9);
     }
+    curT = savedT;
     updateCamera();
   }
 
+  // câmara coreografada: cada passo muda azimute, elevação, zoom e ponto de interesse
+  const camKeys = SPEC.anims.filter(function (a) { return a.type === "camera"; }).sort(function (a, b) { return a.at_ms - b.at_ms; });
+  let curT = 0;
+  const camLook = new THREE.Vector3(), lkA = new THREE.Vector3(), lkB = new THREE.Vector3();
+  const camS = { az: 0, pol: 0, zoom: 1 };
+  function lookPos(l, out) {
+    if (typeof l === "string" && byId[l]) return byId[l].g.getWorldPosition(out);
+    if (Array.isArray(l)) return out.set(l[0], l[1], l[2]);
+    return out.copy(center);
+  }
+  function camState(t) {
+    let f = { az: start[0], pol: start[1], zoom: 1, look: null };
+    camS.az = f.az; camS.pol = f.pol; camS.zoom = 1; camLook.copy(center);
+    for (let i = 0; i < camKeys.length; i++) {
+      const k = camKeys[i];
+      if (t < k.at_ms) break;
+      const to = {
+        az: k.az !== undefined ? k.az * RAD : f.az,
+        pol: k.el !== undefined ? (90 - k.el) * RAD : f.pol,
+        zoom: k.zoom !== undefined ? k.zoom : f.zoom,
+        look: k.look !== undefined ? k.look : f.look
+      };
+      const u = ease((t - k.at_ms) / k.duration_ms, k.ease || "inout");
+      camS.az = f.az + (to.az - f.az) * u;
+      camS.pol = f.pol + (to.pol - f.pol) * u;
+      camS.zoom = f.zoom + (to.zoom - f.zoom) * u;
+      camLook.lerpVectors(lookPos(f.look, lkA), lookPos(to.look, lkB), u);
+      if (t - k.at_ms < k.duration_ms) break;
+      f = to;
+    }
+    return camS;
+  }
   function updateCamera() {
-    const d = fitDist / zoom;
+    const cs = curT >= 0 && camKeys.length ? camState(curT) : null;
+    const A = cs ? az + (cs.az - start[0]) : az;
+    const P = cs ? clamp(pol + (cs.pol - start[1]), 0.1, Math.PI - 0.1) : pol;
+    const d = fitDist / (cs ? zoom * cs.zoom : zoom);
+    const C = cs ? camLook : center;
     camera.position.set(
-      center.x + d * Math.sin(pol) * Math.sin(az),
-      center.y + d * Math.cos(pol),
-      center.z + d * Math.sin(pol) * Math.cos(az)
+      C.x + d * Math.sin(P) * Math.sin(A),
+      C.y + d * Math.cos(P),
+      C.z + d * Math.sin(P) * Math.cos(A)
     );
-    camera.lookAt(center);
+    camera.lookAt(C);
   }
 
   // ---- animações: tudo é função do tempo ----
-  const CONT = { spin: 1, orbit: 1, bounce: 1, pulse: 1 };
+  const CONT = { spin: 1, orbit: 1, bounce: 1, pulse: 1, swing: 1, wave: 1 };
   const REPLAY_HOLD = 3200;
   let endTime = 0;
-  items.forEach(function (it) { if (it.stream) endTime = Infinity; });
+  items.forEach(function (it) { if (it.stream || (it.surf && it.surf.anim)) endTime = Infinity; });
   SPEC.anims.forEach(function (a) {
     // spin/orbit/bounce/pulse correm enquanto a página estiver aberta:
     // a cena nunca "congela" a meio.
-    if (CONT[a.type]) endTime = Infinity;
+    if (CONT[a.type] || (a.type === "expr" && !(a.duration_ms > 0))) endTime = Infinity;
     else endTime = Math.max(endTime, a.at_ms + a.duration_ms);
     if (a.loop && !CONT[a.type]) endTime = Infinity;
   });
@@ -483,13 +594,69 @@ if (renderer) {
     const dur = Math.max(1, a.duration_ms);
     if (a.loop) {
       const ph = (lt / dur) % 2;
-      return ease(ph <= 1 ? ph : 2 - ph);
+      return ease(ph <= 1 ? ph : 2 - ph, a.ease);
     }
-    return ease(clamp(lt / dur, 0, 1));
+    return ease(clamp(lt / dur, 0, 1), a.ease);
   }
 
   const tmp = new THREE.Vector3(), orbOff = new THREE.Vector3(), orbC = new THREE.Vector3(), wpTmp = new THREE.Vector3();
-  const tmp2 = new THREE.Color();
+  const tmp2 = new THREE.Color(), tmp3 = new THREE.Color();
+  const tanTmp = new THREE.Vector3(), qTmp = new THREE.Quaternion(), X_AXIS = new THREE.Vector3(1, 0, 0), Y_AXIS = new THREE.Vector3(0, 1, 0), Z_AXIS = new THREE.Vector3(0, 0, 1);
+
+  // fotogramas-chave: cada propriedade tem a sua pista, interpolada com a suavização pedida
+  function track(a, prop) {
+    if (!a._tr) a._tr = {};
+    if (a._tr[prop]) return a._tr[prop];
+    const out = [];
+    a.frames.forEach(function (f) { if (f[prop] !== undefined) out.push({ t: f.t, v: f[prop] }); });
+    a._tr[prop] = out;
+    return out;
+  }
+  function sampleTrack(a, prop, lt, into) {
+    const tr = track(a, prop);
+    if (!tr.length) return false;
+    let i = 0;
+    while (i < tr.length - 1 && tr[i + 1].t <= lt) i++;
+    const A = tr[i], B = tr[Math.min(i + 1, tr.length - 1)];
+    const u = B.t > A.t ? ease(clamp((lt - A.t) / (B.t - A.t), 0, 1), a.ease) : 1;
+    const k = lt <= tr[0].t ? 0 : 1;
+    if (prop === "opacity") { into[0] = A.v + (B.v - A.v) * (k ? u : 0); return true; }
+    if (prop === "color") {
+      tmp2.setHex(PAL[A.v]); tmp3.setHex(PAL[B.v]);
+      into[0] = tmp2.lerp(tmp3, k ? u : 0).getHex();
+      return true;
+    }
+    for (let c = 0; c < 3; c++) into[c] = A.v[c] + (B.v[c] - A.v[c]) * (k ? u : 0);
+    return true;
+  }
+  const kv = [0, 0, 0];
+  function applyKeys(a, it, lt) {
+    const dur = a.duration_ms;
+    if (a.loop) { const ph = (lt / dur) % 2; lt = (ph <= 1 ? ph : 2 - ph) * dur; }
+    if (sampleTrack(a, "pos", lt, kv)) it.g.position.set(kv[0], kv[1], kv[2]);
+    if (sampleTrack(a, "rot", lt, kv)) it.g.rotation.set(kv[0] * RAD, kv[1] * RAD, kv[2] * RAD);
+    if (sampleTrack(a, "scale", lt, kv)) it.sc.scale.set(kv[0], kv[1], kv[2]);
+    if (sampleTrack(a, "opacity", lt, kv)) it.op = kv[0];
+    if (sampleTrack(a, "color", lt, kv)) it.mat.color.setHex(kv[0]);
+  }
+  // expressões de t (segundos) e u (0 a 1 se a animação tem duração)
+  const fxv = { t: 0, u: 0 };
+  function applyExpr(a, it, lt) {
+    if (!a._f) {
+      const cp = function (arr) { return arr ? arr.map(function (e) { return e ? compileExpr(e, ["t", "u"]) : null; }) : null; };
+      a._f = { pos: cp(a.fx.pos), rot: cp(a.fx.rot), scale: cp(a.fx.scale), opacity: a.fx.opacity ? compileExpr(a.fx.opacity, ["t", "u"]) : null };
+    }
+    const dur = a.duration_ms;
+    if (dur > 0) lt = Math.min(lt, dur);
+    fxv.t = lt / 1000; fxv.u = dur > 0 ? clamp(lt / dur, 0, 1) : 0;
+    const f = a._f, ax = ["x", "y", "z"];
+    for (let c = 0; c < 3; c++) {
+      if (f.pos && f.pos[c]) it.g.position[ax[c]] += f.pos[c](fxv);
+      if (f.rot && f.rot[c]) it.g.rotation[ax[c]] += f.rot[c](fxv) * RAD;
+      if (f.scale && f.scale[c]) it.sc.scale[ax[c]] *= Math.max(0.01, f.scale[c](fxv));
+    }
+    if (f.opacity) it.op *= clamp(f.opacity(fxv), 0, 1);
+  }
 
   function applyAnims(t) {
     items.forEach(function (it) {
@@ -532,6 +699,32 @@ if (renderer) {
           const seg = u * (pts.length - 1);
           const i = Math.min(pts.length - 2, Math.floor(seg));
           it.g.position.lerpVectors(pts[i], pts[i + 1], seg - i);
+        } else if (a.type === "rotate" && a.to_rot) {
+          const u = progress(a, lt), b = it.baseRot, r = a.to_rot;
+          it.g.rotation.set(b.x + (r[0] * RAD - b.x) * u, b.y + (r[1] * RAD - b.y) * u, b.z + (r[2] * RAD - b.z) * u);
+        } else if (a.type === "scale" && a.to_scale) {
+          const u = progress(a, lt), s = a.to_scale;
+          it.sc.scale.set(1 + (s[0] - 1) * u, 1 + (s[1] - 1) * u, 1 + (s[2] - 1) * u);
+        } else if (a.type === "swing") {
+          it.g.rotation[a.axis] += a.deg * RAD * Math.sin((turns + a.phase) * Math.PI * 2);
+        } else if (a.type === "wave") {
+          it.g.position[a.axis] += a.amp * Math.sin((turns + a.phase) * Math.PI * 2);
+        } else if (a.type === "follow" && a.path) {
+          if (!a._curve) {
+            const ps = [it.basePos.clone()];
+            a.path.forEach(function (p) { ps.push(new THREE.Vector3(p[0], p[1], p[2])); });
+            a._curve = new THREE.CatmullRomCurve3(ps, false, "centripetal");
+          }
+          const u = progress(a, lt);
+          it.g.position.copy(a._curve.getPointAt(clamp(u, 0, 1)));
+          if (a.orient) {
+            a._curve.getTangentAt(clamp(u, 0.001, 0.999), tanTmp).normalize();
+            it.g.quaternion.premultiply(qTmp.setFromUnitVectors(a.orient === "y" ? Y_AXIS : a.orient === "z" ? Z_AXIS : X_AXIS, tanTmp));
+          }
+        } else if (a.type === "keys" && a.frames) {
+          applyKeys(a, it, lt);
+        } else if (a.type === "expr" && a.fx) {
+          applyExpr(a, it, lt);
         } else if (a.type === "fade") {
           const u = progress(a, lt);
           it.op = it.o.opacity + (a.to_opacity - it.o.opacity) * u;
@@ -552,7 +745,31 @@ if (renderer) {
       it.sc.visible = it.vis;
       for (let h = 0; h < it.hulls.length; h++) it.hulls[h].visible = !lowQ && it.eff >= 0.6;
       if (it.stream && it.vis) updateStream(it.stream, t);
+      if (it.surf && it.vis) updateSurface(it.surf, t);
     });
+  }
+
+  // superfície y = f(x, z, t): recalcula as alturas (só se a expressão usa t)
+  function updateSurface(sf, t) {
+    if (!sf.anim && sf.last >= 0) return;
+    sf.last = t;
+    const pos = sf.gm.attributes.position, col = sf.gm.attributes.color;
+    sf.vars.t = t / 1000;
+    let lo = 1e9, hi = -1e9;
+    for (let i = 0; i < sf.n; i++) {
+      sf.vars.x = pos.getX(i); sf.vars.z = pos.getZ(i);
+      const y = clamp(sf.fn(sf.vars), -6, 6);
+      pos.setY(i, y);
+      if (y < lo) lo = y;
+      if (y > hi) hi = y;
+    }
+    const span = Math.max(0.001, hi - lo);
+    for (let i = 0; i < sf.n; i++) {
+      const k = 0.9 + 0.5 * ((pos.getY(i) - lo) / span);
+      col.setXYZ(i, sf.base.r * k, sf.base.g * k, sf.base.b * k);
+    }
+    pos.needsUpdate = true; col.needsUpdate = true;
+    sf.gm.computeVertexNormals();
   }
 
   // partículas em fila ao longo do percurso: aparecem, avançam e desaparecem
@@ -687,7 +904,7 @@ if (renderer) {
 
   // ---- ciclo de desenho ----
   let raf = 0, last = 0, t0 = 0, frames = 0, dirty = true;
-  let spin = false;
+  let spin = !!SPEC.turntable;
   let ema = 0, slow = 0, fc = 0;
   function wake() { if (!raf) raf = requestAnimationFrame(frame); }
 
@@ -710,7 +927,8 @@ if (renderer) {
     // efeito voltarem a ser vistos sem o aluno fazer nada
     if (isFinite(endTime) && endTime > 0 && now - t0 > endTime + REPLAY_HOLD) t0 = now;
     const t = now - t0;
-    if (spin && !INLINE) { az += dt * 0.28; }
+    if (spin) { az += dt * 0.28; }
+    curT = t;
     try {
       if (revealed < items.length) {
         const k = Math.min(items.length, 1 + Math.floor(t / REVEAL_STEP));
@@ -736,7 +954,7 @@ if (renderer) {
       if (boot) boot.remove();
       post({ type: "ready" });
     }
-    const running = t < endTime + 80 || (isFinite(endTime) && endTime > 0) || (spin && !INLINE) || dirty;
+    const running = t < endTime + 80 || (isFinite(endTime) && endTime > 0) || spin || dirty;
     dirty = false;
     if (running) raf = requestAnimationFrame(frame);
   }
@@ -835,7 +1053,7 @@ export function buildShapesHtml(
           "https://unpkg.com/three@0.169.0/build/three.module.js",
         ];
   const body = clean
-    ? `const SPEC = ${safeJson(clean)};\nconst INLINE = ${inline ? "true" : "false"};\n${RUNTIME}`
+    ? `const SPEC = ${safeJson(clean)};\nconst INLINE = ${inline ? "true" : "false"};\n${EXPR_RUNTIME}\n${RUNTIME}`
     : `window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({ type: "error", message: "cena 3D inválida" }));`;
 
   return `<!DOCTYPE html>
@@ -1008,6 +1226,32 @@ function roomEnvironment() {
   tex.mapping = THREE.EquirectangularReflectionMapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// solda vértices coincidentes (usado só para o contorno de formas com arestas vivas)
+function mergeVertices(g, tol) {
+  const pos = g.attributes.position;
+  const q = 1 / (tol || 1e-4);
+  const map = new Map();
+  const verts = [];
+  const idx = [];
+  const src = g.index;
+  const n = src ? src.count : pos.count;
+  for (let i = 0; i < n; i++) {
+    const v = src ? src.getX(i) : i;
+    const key = Math.round(pos.getX(v) * q) + "," + Math.round(pos.getY(v) * q) + "," + Math.round(pos.getZ(v) * q);
+    let k = map.get(key);
+    if (k === undefined) {
+      k = verts.length / 3;
+      map.set(key, k);
+      verts.push(pos.getX(v), pos.getY(v), pos.getZ(v));
+    }
+    idx.push(k);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts), 3));
+  out.setIndex(idx);
+  return out;
 }
 ${body}
 </script>

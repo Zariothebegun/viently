@@ -199,7 +199,7 @@ test("hidden objects, captions and the new shapes are accepted", () => {
 test("every model scene is rich and valid, and examples are picked by topic", async () => {
   const { SHAPE_EXAMPLES, pickShapeExamples } = await import("../src/lesson/shapesExamples.ts");
   const { shapesSystemFor } = await import("../src/lesson/generate.ts");
-  assert.ok(SHAPE_EXAMPLES.length >= 12);
+  assert.ok(SHAPE_EXAMPLES.length >= 17);
   for (const e of SHAPE_EXAMPLES) {
     const spec = sanitizeShapes(JSON.parse(e.scene));
     assert.ok(spec && spec.objects.length >= 3 && spec.captions.length >= 1, e.name);
@@ -286,4 +286,57 @@ test("layout operators: radial, helix, grid, on, and animations follow copies", 
   assert.deepEqual(gs[4].pos, [1, 0, 6]);
   // idempotent
   assert.deepEqual(sanitizeShapes(spec), spec);
+});
+
+test("expressions: safe parser, page copy agrees with TS copy, bad input rejected", async () => {
+  const { compileExpr, EXPR_RUNTIME } = await import("../src/three/expr.ts");
+  const page = new Function(EXPR_RUNTIME + "; return compileExpr;")();
+  const cases = ["2*cos(t)", "sin(t*pi)+0.5*t^2", "-t+3*(t-1)", "mix(0,5,clamp(t/3,0,1))", "smooth(0,2,t)*4", "abs(sin(x*2))*exp(-z*z)", "max(1,t)%3", "rnd(t)*2", "atan2(t,2)+sqrt(t)", "step(1,t)+fract(t*3)"];
+  for (const c of cases) {
+    const a = compileExpr(c, ["t", "x", "z"]), b = page(c, ["t", "x", "z"]);
+    assert.ok(a && b, c);
+    for (const v of [{ t: 0 }, { t: 0.7, x: 1, z: 0.3 }, { t: 3.3, x: -2, z: 1 }, { t: 12, x: 0.1, z: -0.4 }])
+      assert.ok(Math.abs(a(v) - b(v)) < 1e-9, c + " " + a(v) + " vs " + b(v));
+  }
+  for (const bad of ["", "alert(1)", "t;t", "constructor", "this.x", "sin(", "sin(1,2)", "t t", "1+", "window", "__proto__", "t".repeat(130), "((((((((((((((((((((t))))))))))))))))))))", "sin(t)[0]", "`x`", "t=1"])
+    assert.equal(compileExpr(bad, ["t"]), null, bad);
+  assert.equal(compileExpr("1/0", []) ({}), 0, "division by zero is 0");
+  assert.ok(compileExpr("exp(100)", [])({}) <= 1000, "output clamped");
+});
+
+test("new animations and shapes survive sanitizing (and twice)", () => {
+  const spec = sanitizeShapes({
+    objects: [
+      { id: "a", shape: "box", pos: [0, 0, 0], size: 1 },
+      { id: "v", shape: "lathe", profile: [[0.2, 0], [0.6, 0.3], [0.4, 1], [0.1, 1.4]], color: "blue" },
+      { id: "w", shape: "extrude", outline: [[-1, 0], [1, 0], [0.4, 0.3], [-0.6, 0.3]], size: [1, 1, 0.2] },
+      { id: "t", shape: "tube", path: [[-2, 0, 0], [-1, 1, 0], [0, 0, 1], [1, 1, 0]], size: 0.15 },
+      { id: "s", shape: "surface", expr: "sin(x*2+t*3)*0.4*exp(-z*z*0.2)", extent: 3 },
+      { id: "bad", shape: "surface", expr: "alert(1)" },
+      { id: "bad2", shape: "lathe", profile: [[1, 1]] },
+    ],
+    anims: [
+      { target: "a", type: "rotate", to_rot: [0, 90, 0], ease: "elastic" },
+      { target: "a", type: "scale", to_scale: 1.5 },
+      { target: "a", type: "swing", axis: "z", deg: 20 },
+      { target: "a", type: "follow", path: [[1, 1, 0], [2, 0, 1], [3, 1, 0]], orient: "y", ease: "out" },
+      { target: "a", type: "keys", frames: [{ t: 0, pos: [0, 0, 0] }, { t: 1000, pos: [1, 1, 0], scale: 2 }, { t: 2000, opacity: 0.3 }] },
+      { target: "a", type: "expr", pos: ["sin(t*2)", "0", "0"], scale: "1+0.1*sin(t*4)" },
+      { target: "a", type: "expr", pos: ["evil()"] },
+      { type: "camera", az: 120, el: 30, zoom: 1.6, look: "t", at_ms: 1000, ease: "inout" },
+      { type: "camera", look: "nope" },
+    ],
+    view: [30, 20],
+    turntable: true,
+  });
+  const ids = spec.objects.map((o) => o.id);
+  assert.deepEqual(ids, ["a", "v", "w", "t", "s"]);
+  const types = spec.anims.map((a) => a.type);
+  for (const k of ["rotate", "scale", "swing", "follow", "keys", "camera"]) assert.ok(types.includes(k), k);
+  assert.equal(spec.anims.filter((a) => a.type === "expr").length, 1, "bad expr dropped");
+  assert.equal(spec.anims.find((a) => a.type === "rotate").ease, "elastic");
+  assert.equal(spec.anims.find((a) => a.type === "camera" && a.look).look, "t");
+  assert.deepEqual(spec.view, [30, 20]);
+  assert.deepEqual(sanitizeShapes(spec), spec, "idempotent");
+  for (const mode of ["inline", "modal"]) assert.doesNotThrow(() => new Script(moduleSource(buildShapesHtml(spec, mode))));
 });

@@ -45,7 +45,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v29";
+const CACHE_KEY = "viently.lessons.v30";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -67,7 +67,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v29|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v30|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -831,22 +831,21 @@ async function callGemini(
 // fazia o modelo cortar a cena a meio (5 a 8 peças em vez das 12 a 30 pedidas)
 // ou devolver JSON inválido; aqui a única tarefa é geometria.
 export const SHAPES_SYSTEM = [
-  "Desenhas uma cena 3D didáctica montada só com formas simples. Respondes APENAS com um objecto JSON compacto, numa só linha.",
-  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso|front|side|top","ground":true}.',
-  "Objecto: {id, shape, parent?, pos:[x,y,z], size:número|[x,y,z], rot?:[x,y,z graus], color, opacity?, finish?, mirror?:'x'|'z'|'xz', from?, to?, label?, note?}.",
-  "Formas: sphere, box, rbox (caixa arredondada), cylinder, capsule, cone, torus, ring, plane, arrow (+y), group, wheel (roda com pneu e jante; size [diâmetro,largura,diâmetro]), gear (teeth 6-24), stream (partículas que correm de from a to, ou por path de pontos; count 3-14, size = tamanho da partícula).",
-  "finish: matte (omissão), metal, glass (translúcido: deixa ver o interior), glow (luz, energia, fluxo).",
-  "from/to [x,y,z] em cylinder, capsule, box, rbox e arrow ligam dois pontos (tubos, fios, hastes, setas) sem calcular rotações.",
-  "MÉTODO: (1) decompõe o objecto real em 14 a 30 peças com proporções reais (x comprimento, y altura, z largura, 1 unidade ≈ 1 metro): corpo, partes funcionais, cada roda/pá/tubo/apoio;",
-  "(2) um group + parent agrupa o que se move junto; mirror repete peças simétricas (rodas, asas, pernas) e as animações também;",
-  "(3) invólucros e cascas em finish glass para o interior se ver; (4) mostra a CAUSA com setas e streams: azul = fluido/entrada, verde = resultado/força útil, vermelho = peso/perda, laranja = energia; entram com opacity 0 + anim fade por ordem (at_ms crescente);",
-  "(5) acaba no efeito visível (sobe, sai, orbita, acende); (6) captions: 3 a 6 frases curtas sincronizadas com at_ms; (7) label (≤22 caracteres) só em 4 a 8 peças que a explicação usa, cada uma com note que ensina.",
-  "Anims: spin (axis, speed), orbit (around, speed), bounce (axis, amp, speed), pulse (amp, speed), move (path, duration_ms), fade (to_opacity, duration_ms), color (to_color, duration_ms); at_ms atrasa; move/fade/color ficam no fim, loop:true faz vai-e-volta.",
-  "Serve para qualquer tema: máquinas, circuitos (fios = cylinder from/to, cargas = stream por path fechado), órgãos, órbitas, estruturas, camadas. Máx. 48 objectos.",
-  "O objecto principal ocupa 60% a 80% da cena; setas e etiquetas menores que metade dele. Rótulos em português. Nada de texto fora do JSON.",
-  "Eixos: x = direita, y = cima, z = para ti; a câmara front vê o plano x-y (usa-a para pontes, engrenagens, esquemas); iso mostra volume; top, órbitas. O eixo de wheel e gear é o z; torus size [diâmetro, espessura do tubo, diâmetro] é um anel horizontal.",
+  "Desenhas uma cena 3D didáctica com formas simples e animação coreografada. Respondes APENAS com um objecto JSON compacto numa só linha, nunca código.",
+  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso|front|side|top","view":[azimute°,elevação°]?,"turntable":true?,"ground":true?}.',
+  "Objecto: {id, shape, parent?, pos:[x,y,z], size:número|[x,y,z], rot?:[x,y,z graus], color, opacity?, finish?, mirror?:'x'|'z'|'xz', from?, to?, repeat?, on?, label?, note?}. Cores: ink blue red green orange purple gray yellow.",
+  "Formas básicas: sphere, box, rbox, cylinder, capsule, cone, torus (size [diâmetro, espessura do tubo, diâmetro]), ring, plane, arrow (+y), group (agrupa; sem malha), wheel (eixo z; size [diâmetro, largura, diâmetro]), gear (teeth 6-24, eixo z), stream (partículas de from a to ou por path; count 3-14).",
+  "Formas livres (servem para qualquer coisa): lathe {profile:[[raio,y],…]} gira um perfil em torno de y (garrafas, foguetes, vasos, torres, peões); extrude {outline:[[x,y],…] polígono, size:[escala x, escala y, espessura]} (asas, barbatanas, engrenagens, silhuetas, letras); tube {path:[[x,y,z],…], size = espessura} curva suave (veias, fios, carris, mangueiras, molas); surface {expr:'f(x,z,t)', extent, grid} altura y = expressão (ondas, terreno, gráficos de funções, campos).",
+  "finish: matte, metal, glass (translúcido), glow (luz/energia). from/to [x,y,z] ligam dois pontos em cylinder, capsule, box, rbox, arrow. repeat {n, step:[x,y,z], around:'y', angle, center, cols, row_step} cria padrões (anel, hélice, grelha, fila). on {id, at:'top|bottom|left|right|front|back', gap} põe uma peça junto a outra.",
+  "ANIMAÇÕES (todas com at_ms, duration_ms, ease: linear|in|out|inout|elastic|back|bounce|spring): spin, orbit (around|center), bounce, pulse, swing (axis, deg, speed: pêndulo), wave (axis, amp, speed), move (path), follow (path de pontos: curva suave; orient:'x|y|z' vira a peça para onde vai), rotate (to_rot graus), scale (to_scale), fade (to_opacity), color (to_color), keys (frames:[{t ms, pos, rot, scale, opacity, color}]: coreografia de vários passos numa só peça).",
+  "LIBERDADE TOTAL: {type:'expr', target, pos:['ex','ey','ez'], rot:[…graus], scale:'e', opacity:'e'} aplica expressões de t (segundos) e u (0-1 se houver duration_ms) por cima do resto: movimentos físicos exactos (mola amortecida '-0.7*exp(-0.2*t)*cos(3*t)', projéctil, lissajous, tremor '0.03*sin(t*55)'). Funções: sin cos tan abs sqrt exp log pow min max mix clamp smooth step fract mod atan2 rnd; constantes pi tau e; operadores + - * / % ^.",
+  "CÂMARA: {type:'camera', az, el, zoom, look:'id'|[x,y,z], at_ms, duration_ms, ease} move a câmara durante a explicação (aproxima da peça de que falas, roda para mostrar o outro lado, afasta no fim). Começa com um plano geral e usa 2 a 4 movimentos.",
+  "MÉTODO: (1) decompõe o real em 14 a 40 peças com proporções verdadeiras (x comprimento, y altura, z largura; 1 unidade ≈ 1 m); prefere formas livres a caixas quando o real é curvo; (2) group + parent agrupa o que se move junto; mirror/repeat para simetrias e padrões; (3) cascas em glass para se ver o interior; (4) mostra a CAUSA com setas e streams (azul fluido, verde força útil, vermelho peso/perda, laranja energia) que entram com opacity 0 + fade por ordem;",
+  "(5) a animação conta uma história em 3 a 5 fases ao longo de 6 a 14 segundos (preparação → causa → efeito → resultado) e termina no efeito visível; (6) captions: 3 a 8 frases curtas sincronizadas com at_ms, uma por fase; (7) label (≤22 caracteres) em 4 a 8 peças que a explicação usa, cada uma com note que ensina; (8) conceitos abstractos (algoritmos, memória, economia, tempo): usa metáforas visuais (barras, caixas, camadas, setas, filas) e movimento para mostrar o processo.",
+  "Eixos: x direita, y cima, z para ti; câmara front vê o plano x-y (pontes, mecanismos, esquemas); iso mostra volume; top para órbitas. Máx. 64 objectos. O objecto principal ocupa 60% a 80% da cena. Rótulos em português. Nada de texto fora do JSON.",
+  "ESCALA ÚNICA (importante): todas as peças entre 0,1 e 6 unidades e o objecto principal entre 3 e 8; perfis lathe e contornos extrude também. Nunca uma peça gigante (mais de 10) ao lado de peças pequenas: a câmara afasta-se e o desenho perde-se.",
   "ESCREVE MENOS E FICA IGUAL: mirror:'x'|'z'|'xz' numa peça cria as cópias simétricas (rodas, asas, pernas, parafusos); repeat:{n,step:[x,y,z],cols?,row_step?,around?:'x'|'y'|'z',center?,angle?} faz fileiras, colunas, grelhas e rodas de peças iguais; on:{id,at:'top'|'bottom'|'left'|'right'|'front'|'back',gap?} encaixa a peça em cima de outra. Usa sempre estes atalhos em vez de escrever peças repetidas uma a uma (mesmo desenho, resposta mais curta).",
-  "Não copies os exemplos: imita só o nível de detalhe e a lógica (peças reais, causa → efeito, legendas sincronizadas) para o tema pedido.",
+  "Não copies os exemplos: imita o nível de detalhe e a lógica (peças reais, causa → efeito, câmara e legendas sincronizadas) para o tema pedido.",
 ].join(" ");
 
 export function shapesSystemFor(prompt: string): string {
@@ -1046,7 +1045,7 @@ async function askShapes(prompt: string, deadline: number, onScene?: (spec: Shap
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: shapesSystemFor(prompt) }] },
               contents: [{ role: "user", parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.5, maxOutputTokens: 6144 },
+              generationConfig: { temperature: 0.5, maxOutputTokens: 8192 },
             }),
           },
         );
