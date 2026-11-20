@@ -1,7 +1,7 @@
 // Gramática de ops do quadro — portada de tutori/engine.py + static/board.js.
 // Espaço lógico: 100 (x) × 75 (y), y cresce para baixo.
 
-import type { SandflowModel } from "../three/sandflow";
+ import type { ShapesSpec } from "../three/shapes";
 
 export type Pt = [number, number];
 
@@ -111,25 +111,64 @@ export type Op =
       color?: Ink;
     }
   | {
-      // modelo 3D interactivo: o cartão no quadro abre um painel com three.js.
-      // model é um preset local ("cell"…) ou "sandflow" (pesquisado no
-      // catálogo Sand3D e desenhado a partir do GLB real).
+      // modelo 3D interactivo: o cartão no quadro abre o painel com three.js.
+      // A cena é escrita pelo modelo de linguagem em primitivas (esferas,
+      // caixas, grupos…) e validada em sanitizeShapes.
       op: "model3d";
-      model: string;
-      query?: string;
-      // referência já resolvida para um GLB do Sandflow
-      ref?: SandflowModel;
-      // nomes das partes que ficam colados ao modelo 3D
-      labels?: string[];
+      model: "shapes";
+      shapes: ShapesSpec;
       at?: Pt;
       w?: number;
       h?: number;
       title?: string;
       color?: Ink;
     }
+  | {
+      op: "motion";
+      points: Pt[];
+      label?: string;
+      color?: Ink;
+      radius?: number;
+      trail?: boolean;
+      start_ms?: number;
+      duration_ms?: number;
+    }
+  | {
+      // Composite scene: each element has an independent start and duration.
+      op: "scene";
+      elements: { at_ms: number; duration_ms: number; op: Op }[];
+      start_ms?: number;
+      duration_ms: number;
+    }
+  | {
+      op: "code";
+      lines: string[];
+      focus?: number[];
+      lang?: string;
+      title?: string;
+      at?: Pt;
+      w?: number;
+      h?: number;
+    }
+  | {
+      op: "plot3d";
+      kind: "surface" | "ridgeline";
+      fn?: "gaussian" | "saddle" | "bowl" | "wave" | "ripple";
+      path?: Pt[];
+      marker?: { at: Pt; label?: string };
+      groups?: { label?: string; mean: number; spread: number; skew?: number; color?: Ink }[];
+      title?: string;
+      xlabel?: string;
+      ylabel?: string;
+      zlabel?: string;
+      at?: Pt;
+      w?: number;
+      h?: number;
+    }
   | { op: "underline"; at: Pt; w?: number; color?: Ink }
   | { op: "highlight"; at: Pt; w?: number; color?: Ink }
   | { op: "dot"; at: Pt; label?: string; label_at?: Pt; color?: Ink }
+  | { op: "hotspot"; at: Pt; label: string; detail: string; color?: Ink }
   | { op: "erase"; id?: string }
   | { op: "clear" };
 
@@ -148,6 +187,9 @@ export type Check = {
 };
 
 export type Step = {
+  // Cada passo é uma página autónoma do feed vertical.
+  title?: string;
+  subtitle?: string;
   say: string;
   // versão escrita do passo, para a página (texto de ensino completo)
   write?: string;
@@ -162,6 +204,8 @@ export type Step = {
 
 export type Lesson = {
   title?: string;
+  // decisão do modelo: esta página ensina com 3D ou com esquema 2D
+  visual?: "3d" | "2d";
   // linha por baixo do título, à maneira das páginas do Clicky
   subtitle?: string;
   // continuações recomendadas para a página seguinte (2, curtas)

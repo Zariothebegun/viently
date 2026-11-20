@@ -1,14 +1,35 @@
+import { pickShapeExamples } from "./shapesExamples";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { Check, Lesson, Op, Step } from "../board/ops";
-import { isModelId } from "../three/models";
+import type { Check, Ink, Lesson, Op, Size, Step } from "../board/ops";
+import { SURFACE_FNS } from "../board/plot3d";
+import { lintShapes, sanitizeShapes } from "../three/shapes";
 import { lessonSystem } from "./prompt";
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 // API alternativa (ex.: proxy local do AI Studio) configurada no .env.
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE;
-const API_KEY = process.env.EXPO_PUBLIC_API_KEY;
 const API_MODEL = process.env.EXPO_PUBLIC_API_MODEL;
+
+// API oficial do Gemini (AI Studio). Com chave no .env é o primeiro caminho:
+// responde em segundos, ao contrário do modelo gratuito do OpenRouter.
+const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY;
+const GEMINI_KEY_2 = process.env.EXPO_PUBLIC_GEMINI_KEY_2;
+const GEMINI_KEY_3 = process.env.EXPO_PUBLIC_GEMINI_KEY_3;
+const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-3-flash-preview";
+// Várias contas e vários modelos: a quota gratuita é por modelo e por conta,
+// por isso cada combinação é uma tentativa independente. Quando uma esgota
+// (429), a seguinte tem quota própria.
+const GEMINI_KEYS = [GEMINI_KEY, GEMINI_KEY_2, GEMINI_KEY_3]
+  .map((k) => (k ?? "").trim())
+  .filter((k, i, all) => !!k && all.indexOf(k) === i);
+const GEMINI_MODELS = [
+  // medido: 3.1-flash-lite responde em 4 a 7 s com JSON válido e texto longo;
+  // flash-lite-latest devolve 503 e o 3-flash-preview está sempre em 429.
+  "gemini-3.1-flash-lite",
+  GEMINI_MODEL,
+  "gemini-flash-lite-latest",
+].filter((m, i, all) => !!m && all.indexOf(m) === i);
 
 // Modelo por omissão. O "lightning" é o mais rápido dos gratuitos; os
 // seguintes só entram se ele estiver limitado ou falhar o JSON.
@@ -24,7 +45,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v4";
+const CACHE_KEY = "viently.lessons.v29";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -40,9 +61,13 @@ function hash(s: string): string {
 }
 
 async function cacheKey(input: GenerateInput): Promise<string> {
-  const tail = input.history.slice(-2).map((m) => m.content).join("~").slice(-360);
+  // Cache version is bumped when lesson structure/prompt rules change. Include
+  // the learner profile and the same six history turns sent to the model.
+  const tail = input.history.slice(-6)
+    .map((m) => `${m.role}:${String(m.content ?? "")}`)
+    .join("~");
   return hash(
-    `${input.question}|${input.pace}|${input.minutes}|${tail}|${input.model ?? ""}`,
+    `lesson-v29|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -75,12 +100,26 @@ async function writeCache(key: string, lesson: Lesson) {
 const KNOWN = new Set([
   "title", "text", "note", "line", "arrow", "callout", "box", "ellipse",
   "curve", "polygon", "notes", "graph", "axes", "underline", "highlight",
-  "dot", "model3d", "erase", "clear",
+  "dot", "hotspot", "motion", "scene", "model3d", "erase", "clear", "code", "plot3d",
 ]);
 
 function num(v: any, d: number): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
+}
+
+function safeSize(value: any, fallback: Size = "m"): Size {
+  return value === "s" || value === "m" || value === "l" || value === "xl"
+    ? value
+    : fallback;
+}
+
+function safeColor(value: any, fallback: Ink = "ink"): Ink {
+  return value === "ink" || value === "blue" || value === "red" ||
+    value === "green" || value === "orange" || value === "purple" ||
+    value === "gray" || value === "yellow"
+    ? value
+    : fallback;
 }
 
 function pt(v: any, d: [number, number]): [number, number] {
@@ -112,31 +151,31 @@ export function sanitizeOps(raw: any): Op[] {
         out.push({ op: "erase", id: o.id ? String(o.id) : undefined });
         break;
       case "title":
-        if (o.text) out.push({ op: "title", text: String(o.text).slice(0, 60), color: o.color });
+        if (o.text) out.push({ op: "title", text: String(o.text).slice(0, 60), color: safeColor(o.color) });
         break;
       case "text":
         if (o.text) out.push({
           op: "text",
           text: String(o.text).slice(0, 160),
           at: pt(o.at, [10, 20]),
-          size: o.size,
-          color: o.color,
+          size: safeSize(o.size),
+          color: safeColor(o.color),
           align: o.align === "center" ? "center" : "left",
-          fit_w: o.fit_w ? num(o.fit_w, 40) : undefined,
+          fit_w: o.fit_w != null ? Math.max(8, Math.min(88, num(o.fit_w, 40))) : undefined,
         });
         break;
       case "note":
-        if (o.text) out.push({ op: "note", text: String(o.text).slice(0, 160), at: pt(o.at, [10, 20]), color: o.color });
+        if (o.text) out.push({ op: "note", text: String(o.text).slice(0, 160), at: pt(o.at, [10, 20]), color: safeColor(o.color) });
         break;
       case "line":
-        out.push({ op: "line", from: pt(o.from, [0, 0]), to: pt(o.to, [10, 10]), color: o.color, dash: !!o.dash });
+        out.push({ op: "line", from: pt(o.from, [0, 0]), to: pt(o.to, [10, 10]), color: safeColor(o.color), dash: !!o.dash });
         break;
       case "arrow":
         out.push({
           op: "arrow",
           from: pt(o.from, [0, 0]),
           to: pt(o.to, [10, 10]),
-          color: o.color,
+          color: safeColor(o.color),
           label: o.label ? String(o.label).slice(0, 32) : undefined,
           label_at: o.label_at ? pt(o.label_at, [0, 0]) : undefined,
         });
@@ -149,7 +188,7 @@ export function sanitizeOps(raw: any): Op[] {
           r: o.r ? num(o.r, 3) : undefined,
           label: o.label ? String(o.label).slice(0, 48) : undefined,
           label_at: o.label_at ? pt(o.label_at, [0, 0]) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "box":
@@ -160,13 +199,87 @@ export function sanitizeOps(raw: any): Op[] {
           w: num(o.w, 22),
           h: num(o.h, 10),
           label: o.label ? String(o.label).slice(0, 40) : undefined,
-          size: o.size,
-          color: o.color,
+          size: safeSize(o.size),
+          color: safeColor(o.color),
         });
         break;
+      case "motion": {
+        const points = Array.isArray(o.points)
+          ? o.points.slice(0, 8).map((p: any) => {
+              const q = pt(p, [50, 38]);
+              return [
+                Math.max(1, Math.min(99, q[0])),
+                Math.max(1, Math.min(74, q[1])),
+              ] as [number, number];
+            })
+          : [];
+        if (points.length >= 2) {
+          out.push({
+            op: "motion",
+            points,
+            label: o.label ? String(o.label).replace(/\s+/g, " ").trim().slice(0, 32) : undefined,
+            color: ["ink", "blue", "red", "green", "orange", "purple", "gray", "yellow"].includes(o.color) ? o.color : "blue",
+            radius: Math.max(0.8, Math.min(3.5, num(o.radius, 1.8))),
+            trail: o.trail !== false,
+            start_ms: o.start_ms != null ? Math.max(0, Math.min(6000, Math.round(num(o.start_ms, 0)))) : undefined,
+            duration_ms: o.duration_ms != null ? Math.max(250, Math.min(5000, Math.round(num(o.duration_ms, 1500)))) : undefined,
+          });
+        }
+        break;
+      }
+      case "scene": {
+        const rawElements = Array.isArray(o.elements) ? o.elements.slice(0, 16) : [];
+        const elements: { at_ms: number; duration_ms: number; op: Op }[] = [];
+        for (const element of rawElements) {
+          if (!element || typeof element !== "object" || !element.op || typeof element.op !== "object") continue;
+          const childKind = String(element.op.op ?? "");
+          // 3D models are rendered by the page overlay, not inside the SVG scene.
+          // Nested and destructive operations are rejected to keep the renderer predictable.
+          if (["scene", "model3d", "clear", "erase", "hotspot"].includes(childKind)) continue;
+          const child = sanitizeOps([element.op])[0];
+          if (!child) continue;
+          elements.push({
+            at_ms: Math.max(0, Math.min(5000, Math.round(num(element.at_ms, 0)))),
+            duration_ms: Math.max(100, Math.min(5000, Math.round(num(element.duration_ms, 900)))),
+            op: child,
+          });
+        }
+        if (elements.length) {
+          const end = Math.max(...elements.map((element) => element.at_ms + element.duration_ms));
+          out.push({
+            op: "scene",
+            elements,
+            start_ms: o.start_ms != null ? Math.max(0, Math.min(6000, Math.round(num(o.start_ms, 0)))) : undefined,
+            duration_ms: Math.max(end, Math.min(10000, Math.max(250, Math.round(num(o.duration_ms, end))))),
+          });
+        }
+        break;
+      }
+      case "code": {
+        const lines = Array.isArray(o.lines) ? o.lines.slice(0, 16).map((v: any) => String(v ?? "").replace(/\t/g, "    ").replace(/\s+$/, "").slice(0, 52)) : typeof o.code === "string" ? String(o.code).replace(/\r/g, "").split("\n").slice(0, 16).map((v) => v.replace(/\t/g, "    ").replace(/\s+$/, "").slice(0, 52)) : [];
+        while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+        if (!lines.length) break;
+        const focus = Array.isArray(o.focus) ? Array.from(new Set(o.focus.map((v: any) => Math.round(num(v, 0))).filter((v: number) => v >= 1 && v <= lines.length))).slice(0, 8) as number[] : undefined;
+        out.push({ op: "code", lines, focus: focus?.length ? focus : undefined, lang: o.lang ? String(o.lang).replace(/[^\w+#.-]/g, "").slice(0, 12) : undefined, title: o.title ? String(o.title).replace(/\s+/g, " ").trim().slice(0, 28) : undefined, at: o.at ? pt(o.at, [3, 4]) : undefined, w: o.w != null ? Math.max(30, Math.min(96, num(o.w, 94))) : undefined, h: o.h != null ? Math.max(12, Math.min(70, num(o.h, 40))) : undefined });
+        break;
+      }
+      case "plot3d": {
+        const kindName = o.kind === "ridgeline" ? "ridgeline" : "surface";
+        const base = { op: "plot3d" as const, kind: kindName as "surface" | "ridgeline", title: o.title ? String(o.title).replace(/\s+/g, " ").trim().slice(0, 40) : undefined, xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined, ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined, zlabel: o.zlabel ? String(o.zlabel).slice(0, 16) : undefined, at: o.at ? pt(o.at, [10, 10]) : undefined, w: o.w != null ? Math.max(24, Math.min(96, num(o.w, 70))) : undefined, h: o.h != null ? Math.max(18, Math.min(70, num(o.h, 44))) : undefined };
+        if (kindName === "surface") {
+          const fn = SURFACE_FNS.includes(o.fn) ? o.fn : "gaussian";
+          const clamp1 = (p: [number, number]): [number, number] => [Math.max(-1, Math.min(1, p[0])), Math.max(-1, Math.min(1, p[1]))];
+          const path = pts(o.path, 24).map(clamp1);
+          out.push({ ...base, fn, path: path.length >= 2 ? path : undefined, marker: o.marker && typeof o.marker === "object" ? { at: clamp1(pt(o.marker.at, [0, 0])), label: o.marker.label ? String(o.marker.label).slice(0, 24) : undefined } : undefined });
+        } else {
+          const groups = Array.isArray(o.groups) ? o.groups.slice(0, 6).map((g: any) => ({ label: g?.label ? String(g.label).replace(/\s+/g, " ").trim().slice(0, 18) : undefined, mean: num(g?.mean, 0), spread: Math.max(1e-6, Math.abs(num(g?.spread, 1))), skew: g?.skew != null ? Math.max(-8, Math.min(8, num(g.skew, 0))) : undefined, color: g?.color != null ? safeColor(g.color, "blue") : undefined })).filter((g: any) => Number.isFinite(g.mean) && Number.isFinite(g.spread)) : [];
+          if (groups.length >= 2) out.push({ ...base, groups });
+        }
+        break;
+      }
       case "curve": {
         const points = pts(o.points);
-        if (points.length >= 2) out.push({ op: "curve", points, color: o.color });
+        if (points.length >= 2) out.push({ op: "curve", points, color: safeColor(o.color) });
         break;
       }
       case "polygon": {
@@ -175,8 +288,9 @@ export function sanitizeOps(raw: any): Op[] {
           op: "polygon",
           points,
           label: o.label ? String(o.label).slice(0, 32) : undefined,
-          side_labels: Array.isArray(o.side_labels) ? o.side_labels.slice(0, 8).map(String) : undefined,
-          color: o.color,
+          side_labels: Array.isArray(o.side_labels) ? o.side_labels.slice(0, 8).map((v: any) => String(v).slice(0, 32)) : undefined,
+          size: safeSize(o.size),
+          color: safeColor(o.color),
         });
         break;
       }
@@ -187,35 +301,63 @@ export function sanitizeOps(raw: any): Op[] {
           title: o.title ? String(o.title).slice(0, 40) : undefined,
           lines: Array.isArray(o.lines) ? o.lines.slice(0, 7).map((s: any) => String(s).slice(0, 46)) : [],
           compact: !!o.compact,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "graph": {
         const series = Array.isArray(o.series)
           ? o.series.slice(0, 4).map((s: any) => ({
-              label: s?.label ? String(s.label).slice(0, 16) : undefined,
-              color: s?.color,
-              points: pts(s?.points, 24),
+              label: s?.label ? String(s.label).slice(0, 22) : undefined,
+              color: safeColor(s?.color, "blue"),
+              points: pts(s?.points, 40)
+                .filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))
+                .sort((a, b) => a[0] - b[0]),
             })).filter((s: any) => s.points.length >= 2)
           : [];
+        const allX = series.flatMap((s: any) => s.points.map((p: [number, number]) => p[0]));
+        const allY = series.flatMap((s: any) => s.points.map((p: [number, number]) => p[1]));
+        const autoRange = (values: number[], fallback: [number, number]): [number, number] => {
+          let lo = values.length ? Math.min(...values) : fallback[0];
+          let hi = values.length ? Math.max(...values) : fallback[1];
+          if (lo === hi) {
+            const pad = Math.abs(lo) * 0.08 || 1;
+            lo -= pad;
+            hi += pad;
+          } else {
+            const pad = (hi - lo) * 0.04;
+            lo -= pad;
+            hi += pad;
+          }
+          return [lo, hi];
+        };
+        const suppliedX = o.x_range ? pt(o.x_range, [0, 1]) : null;
+        const suppliedY = o.y_range ? pt(o.y_range, [0, 1]) : null;
+        const xAuto = autoRange(allX, [0, 1]);
+        const yAuto = autoRange(allY, [0, 1]);
+        const xRange: [number, number] = suppliedX && suppliedX[0] < suppliedX[1]
+          ? [Math.min(suppliedX[0], xAuto[0]), Math.max(suppliedX[1], xAuto[1])]
+          : xAuto;
+        const yRange: [number, number] = suppliedY && suppliedY[0] < suppliedY[1]
+          ? [Math.min(suppliedY[0], yAuto[0]), Math.max(suppliedY[1], yAuto[1])]
+          : yAuto;
         out.push({
           op: "graph",
           at: o.at ? pt(o.at, [12, 22]) : [12, 22],
-          w: num(o.w, 44),
-          h: num(o.h, 30),
-          x_range: o.x_range ? pt(o.x_range, [0, 1]) : [0, 1],
-          y_range: o.y_range ? pt(o.y_range, [0, 1]) : [0, 1],
+          w: Math.max(20, num(o.w, 58)),
+          h: Math.max(18, num(o.h, 38)),
+          x_range: xRange,
+          y_range: yRange,
           series,
           markers: Array.isArray(o.markers)
-            ? o.markers.slice(0, 6).map((m: any) => ({
+            ? o.markers.slice(0, 8).map((m: any) => ({
                 at: pt(m?.at, [0, 0]),
-                label: m?.label ? String(m.label).slice(0, 16) : undefined,
-                color: m?.color,
+                label: m?.label ? String(m.label).slice(0, 20) : undefined,
+                color: safeColor(m?.color, "orange"),
               }))
             : [],
           title: o.title ? String(o.title).slice(0, 30) : undefined,
-          xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined,
-          ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined,
+          xlabel: o.xlabel ? String(o.xlabel).slice(0, 20) : undefined,
+          ylabel: o.ylabel ? String(o.ylabel).slice(0, 20) : undefined,
         });
         break;
       }
@@ -227,45 +369,31 @@ export function sanitizeOps(raw: any): Op[] {
           h: num(o.h, 28),
           xlabel: o.xlabel ? String(o.xlabel).slice(0, 16) : undefined,
           ylabel: o.ylabel ? String(o.ylabel).slice(0, 16) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
       case "model3d": {
+        // The page overlay supports exactly one 3D model. Reject extras here
+        // instead of silently losing them later in the renderer.
+        if (out.some((item) => item.op === "model3d")) break;
         const base = {
           op: "model3d" as const,
           at: (o.at ? pt(o.at, [22, 2]) : [22, 2]) as [number, number],
           w: num(o.w, 54),
           h: num(o.h, 38),
           title: o.title ? String(o.title).slice(0, 40) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         };
-        if (isModelId(o.model)) {
-          // preset local: roda, explode e mostra as partes
-          out.push({ ...base, model: o.model });
-        } else if (o.model === "sandflow") {
-          const query = String(o.query ?? "")
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 80);
-          if (query) {
-            out.push({
-              ...base,
-              model: "sandflow",
-              query,
-              labels: Array.isArray(o.labels)
-                ? o.labels
-                    .map((v: any) => String(v ?? "").replace(/\s+/g, " ").trim().slice(0, 26))
-                    .filter((v: string) => v.length > 1)
-                    .slice(0, 4)
-                : undefined,
-            });
-          }
+        if (o.model === "shapes" || o.shapes) {
+          // a cena vem em o.shapes ou directamente no próprio op
+          const spec = sanitizeShapes(o.shapes ?? o);
+          if (spec) out.push({ ...base, model: "shapes", shapes: spec });
         }
         break;
       }
       case "underline":
       case "highlight":
-        out.push({ op: kind as "underline" | "highlight", at: pt(o.at, [10, 20]), w: num(o.w, 20), color: o.color });
+        out.push({ op: kind as "underline" | "highlight", at: pt(o.at, [10, 20]), w: num(o.w, 20), color: safeColor(o.color) });
         break;
       case "dot":
         out.push({
@@ -273,9 +401,26 @@ export function sanitizeOps(raw: any): Op[] {
           at: pt(o.at, [50, 38]),
           label: o.label ? String(o.label).slice(0, 24) : undefined,
           label_at: o.label_at ? pt(o.label_at, [0, 0]) : undefined,
-          color: o.color,
+          color: safeColor(o.color),
         });
         break;
+      case "hotspot": {
+        // Keep the interaction layer sparse and predictable on small screens.
+        if (out.filter((item) => item.op === "hotspot").length >= 4) break;
+        const label = String(o.label ?? "").replace(/\s+/g, " ").trim().slice(0, 28);
+        const detail = String(o.detail ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+        if (label && detail) {
+          const at = pt(o.at, [50, 38]);
+          out.push({
+            op: "hotspot",
+            at: [Math.max(2, Math.min(98, at[0])), Math.max(2, Math.min(73, at[1]))],
+            label,
+            detail,
+            color: ["ink", "blue", "red", "green", "orange", "purple", "gray", "yellow"].includes(o.color) ? o.color : "orange",
+          });
+        }
+        break;
+      }
     }
   }
   return out;
@@ -283,7 +428,7 @@ export function sanitizeOps(raw: any): Op[] {
 
 // corta um texto no fim da última frase completa que cabe no limite
 function fitSentence(raw: string, max: number): string {
-  const text = String(raw).replace(/s+/g, " ").trim();
+  const text = String(raw).replace(/\s+/g, " ").trim();
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("? "), cut.lastIndexOf("! "));
@@ -292,7 +437,35 @@ function fitSentence(raw: string, max: number): string {
   return (space > 40 ? cut.slice(0, space) : cut).trim() + ".";
 }
 
-function parseLesson(raw: string): Lesson {
+function removeTrailingCommas(value: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      out += ch;
+      continue;
+    }
+    if (ch === ",") {
+      let next = i + 1;
+      while (next < value.length && /\s/.test(value[next])) next++;
+      if (value[next] === "}" || value[next] === "]") continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+export function parseLesson(raw: string): Lesson {
   let text = raw.trim();
   // modelos às vezes embrulham em ```json
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -301,21 +474,36 @@ function parseLesson(raw: string): Lesson {
   const last = text.lastIndexOf("}");
   if (first >= 0 && last > first) text = text.slice(first, last + 1);
 
-  const data = JSON.parse(text);
+  let data: any;
+  try {
+    data = JSON.parse(text);
+  } catch (firstError) {
+    // Corrige só vírgulas finais; não inventa campos nem altera o conteúdo.
+    const repaired = removeTrailingCommas(text);
+    try {
+      data = JSON.parse(repaired);
+    } catch {
+      throw new Error(firstError instanceof Error
+        ? "JSON inválido devolvido pelo modelo: " + firstError.message.slice(0, 120)
+        : "JSON inválido devolvido pelo modelo.");
+    }
+  }
   const steps: Step[] = [];
 
   // Formato actual: a página inteira num só objecto.
   const pageBoard = sanitizeOps(data.board)
-    .filter((o) => o.op !== "title")
-    .slice(0, 10);
-  if (pageBoard.length >= 3) {
-    const say = String(data.say ?? "").replace(/\s+/g, " ").trim().slice(0, 420);
+    .filter((o) => o.op !== "title" && o.op !== "clear" && o.op !== "erase")
+    .slice(0, 12);
+  // A clear one- or two-element diagram can be valid; destructive-only
+  // boards were filtered above and must not count as teaching visuals.
+  if (pageBoard.length >= 1) {
+    const say = String(data.say ?? "").replace(/\s+/g, " ").trim().slice(0, 950);
     const note = String(data.note ?? "")
       .replace(/\r/g, "")
       .replace(/[ \t]+/g, " ")
       .replace(/\n{2,}/g, "\n")
       .trim()
-      .slice(0, 1400);
+      .slice(0, 1200);
     // resumo "Para lembrar" para fixar no fim da página
     const rc = data.recap;
     const rcTitle = String(rc?.title ?? "").trim().slice(0, 40) || "Para lembrar";
@@ -337,9 +525,9 @@ function parseLesson(raw: string): Lesson {
           .filter((n: any) => n.label && n.value)
           .slice(0, 3)
       : [];
-    const example = String(data.example ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
-    const mw = String(data.mistake?.wrong ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
-    const mr = String(data.mistake?.right ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+    const example = String(data.example ?? "").replace(/\s+/g, " ").trim().slice(0, 360);
+    const mw = String(data.mistake?.wrong ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
+    const mr = String(data.mistake?.right ?? "").replace(/\s+/g, " ").trim().slice(0, 220);
     const mistake = mw && mr ? { wrong: mw, right: mr } : undefined;
     steps.push({
       say: say || note.replace(/\s*\n\s*/g, " "),
@@ -395,7 +583,9 @@ function parseLesson(raw: string): Lesson {
         .filter((v: string) => v.length > 1)
         .slice(0, 3)
     : [];
+  const visualRaw = String(data.visual ?? "").toLowerCase();
   return {
+    visual: visualRaw.startsWith("3") ? "3d" : visualRaw.startsWith("2") ? "2d" : undefined,
     title: data.title ? String(data.title).slice(0, 48) : undefined,
     // o subtítulo é uma frase completa: corta no fim da última frase que cabe,
     // nunca a meio de uma palavra
@@ -445,7 +635,7 @@ const LESSON_SCHEMA = {
       properties: { wrong: { type: "string" }, right: { type: "string" } },
     },
     say: { type: "string" },
-    note: { type: "string" },
+    note: { type: "string", maxLength: 1200 },
     recap: {
       type: "object",
       properties: {
@@ -453,9 +643,18 @@ const LESSON_SCHEMA = {
         lines: { type: "array", minItems: 2, maxItems: 3, items: { type: "string" } },
       },
     },
+    check: {
+      type: "object",
+      properties: {
+        prompt: { type: "string" },
+        options: { type: "array", minItems: 2, maxItems: 4, items: { type: "string" } },
+        answer_index: { type: "integer", minimum: 0, maximum: 3 },
+        explanation: { type: "string" },
+      },
+    },
     board: {
       type: "array",
-      minItems: 4,
+      minItems: 1,
       maxItems: 10,
       items: { type: "object" },
     },
@@ -493,15 +692,6 @@ function formatBody(mode: Format): Record<string, unknown> {
   return {};
 }
 
-const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-const GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_KEY || null;
-const GEMINI_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || "gemini-3-flash-preview";
-
-const OPENROUTER_KEY = (() => {
-  const env = process.env.EXPO_PUBLIC_OPENROUTER_KEY;
-  return env && env.startsWith("sk-") ? env : null;
-})();
-
 async function callModel(
   model: string,
   system: string,
@@ -509,7 +699,7 @@ async function callModel(
   mode: Format,
   timeoutMs: number,
   endpoint: string = API_BASE ? `${API_BASE}/chat/completions` : ENDPOINT,
-  apiKey: string | null = API_BASE && API_KEY ? API_KEY : input.key,
+  apiKey: string | null = input.key,
 ): Promise<Lesson> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -521,108 +711,260 @@ async function callModel(
     headers["HTTP-Referer"] = "https://viently.pt";
     headers["X-Title"] = "Viently";
   }
-  // A API oficial do Gemini usa o formato nativo: o responseMimeType dá JSON
-  // limpo; a camada OpenAI-compatível degenera com json_schema.
-  const isGemini = endpoint.includes("generativelanguage.googleapis.com");
-  const body = isGemini
-    ? {
-        contents: [
-          ...input.history.slice(-6).map((m: any) => ({
-            role: m.role === "assistant" ? "model" : "user",
-            parts: [{ text: String(m.content ?? "") }],
-          })),
-          { role: "user", parts: [{ text: input.question }] },
-        ],
-        systemInstruction: { parts: [{ text: system }] },
-        generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 8192,
-          responseMimeType: "application/json",
-          // sem responseSchema: declarar board como objecto vazio fazia o
-          // Gemini devolver [{},{},...] e a aula ficava sem ops
-
-          // sem pensamento: é o que fazia a resposta ultrapassar o tempo e
-          // chegar ao fim com JSON cortado
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }
-    : {
-        model,
-        temperature: 0.4,
-        max_tokens: 4096,
-        ...formatBody(mode),
-        messages: [
-          { role: "system", content: system },
-          ...input.history.slice(-6),
-          { role: "user", content: input.question },
-        ],
-      };
-  // formato nativo vai ao endpoint nativo, com a chave no header próprio
-  const url = isGemini
-    ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-    : endpoint;
-  const reqHeaders = { ...headers };
-  if (isGemini) {
-    delete reqHeaders.Authorization;
-    reqHeaders["x-goog-api-key"] = apiKey || "";
-  }
+  const body = {
+    model,
+    temperature: 0.4,
+    max_tokens: 4096,
+    ...formatBody(mode),
+    messages: [
+      { role: "system", content: system },
+      ...input.history.slice(-6),
+      { role: "user", content: input.question },
+    ],
+  };
   try {
-    res = await fetch(url, { method: "POST", headers: reqHeaders, signal: ctrl.signal, body: JSON.stringify(body) });
+    res = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      signal: ctrl.signal,
+      body: JSON.stringify(body),
+    });
   } catch (e: any) {
+    clearTimeout(timer);
     if (e?.name === "AbortError") {
       throw new Error("O modelo demorou demasiado a responder. Tenta outra vez.");
     }
     throw e;
+  }
+
+  try {
+    if (!res.ok) {
+      const responseBody = await res.text().catch(() => "");
+      throw new HttpError(res.status, (isCloud ? "OpenRouter" : "API local") + " " + res.status + ": " + responseBody.slice(0, 220));
+    }
+
+    const json = await res.json();
+    const content = json?.choices?.[0]?.message?.content
+      || json?.choices?.[0]?.message?.reasoning_content;
+    if (typeof content !== "string" || !content.trim()) {
+      throw new Error("Resposta vazia do modelo.");
+    }
+    return parseLesson(content);
   } finally {
     clearTimeout(timer);
   }
+}
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new HttpError(res.status, `${isCloud ? "OpenRouter" : "API local"} ${res.status}: ${body.slice(0, 220)}`);
-  }
-
-  const json = await res.json();
-  if (isGemini) {
-    const cand = json?.candidates?.[0];
-    const content = cand?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("")
-      || cand?.content?.parts?.[0]?.text || "";
-    if (!content.trim()) {
-      const fr = json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason;
-      throw new Error(`Resposta vazia do Gemini (${fr || "sem fim"}).`);
+// Gemini usa o mesmo prompt, mas o corpo e a resposta têm outro formato.
+async function callGemini(
+  model: string,
+  system: string,
+  input: GenerateInput,
+  mode: "json" | "none",
+  timeoutMs: number,
+  apiKey: string | null = GEMINI_KEY ?? null,
+): Promise<Lesson> {
+  if (!apiKey) throw new Error("Sem chave Gemini configurada.");
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model,
+  )}:generateContent?key=${apiKey}`;
+  const contents = [
+    ...input.history.slice(-6).map((m) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: String(m.content ?? "") }],
+    })),
+    { role: "user", parts: [{ text: input.question }] },
+  ];
+  const body = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents,
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 8192,
+      ...(mode === "json" ? { responseMimeType: "application/json" } : {}),
+    },
+  };
+  let res: Response | null = null;
+  for (let tryIndex = 0; tryIndex < 3; tryIndex++) {
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
+        body: JSON.stringify(body),
+      });
+    } catch (e: any) {
+      clearTimeout(timer);
+      if (e?.name === "AbortError") {
+        throw new Error("O modelo demorou demasiado a responder. Tenta outra vez.");
+      }
+      throw e;
     }
-    return parseLesson(content);
+    // 503/500 = modelo sobrecarregado; 429 = quota por minuto. Ambos passam.
+    if (![429, 500, 502, 503, 504].includes(res.status) || tryIndex === 2) break;
+    await new Promise((r) => setTimeout(r, 900 + tryIndex * 700));
   }
-  const msg = json?.choices?.[0]?.message;
-  // modelos de raciocínio podem chegar ao limite no "pensamento" e deixar o
-  // content vazio; nesse caso usamos o próprio raciocínio como resposta
-  const content = msg?.content || msg?.reasoning_content;
-  if (!content) throw new Error("Resposta vazia do modelo.");
-  return parseLesson(content);
+  if (!res) throw new Error("Sem resposta do Gemini.");
+
+  try {
+    if (!res.ok) {
+      const responseBody = await res.text().catch(() => "");
+      throw new HttpError(res.status, "Gemini " + res.status + ": " + responseBody.slice(0, 220));
+    }
+    const json = await res.json();
+    const text = (json?.candidates?.[0]?.content?.parts ?? [])
+      .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+      .join("");
+    if (!text.trim()) throw new Error("Resposta vazia do modelo.");
+    return parseLesson(text);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+
+// Segunda chamada, focada: escrever SÓ a cena 3D. O pedido grande de uma vez
+// fazia o modelo cortar a cena a meio (5 a 8 peças em vez das 12 a 30 pedidas)
+// ou devolver JSON inválido; aqui a única tarefa é geometria.
+export const SHAPES_SYSTEM = [
+  "Desenhas uma cena 3D didáctica montada só com formas simples. Respondes APENAS com um objecto JSON compacto, numa só linha.",
+  'Formato: {"objects":[...],"anims":[...],"captions":[...],"camera":"iso|front|side|top","ground":true}.',
+  "Objecto: {id, shape, parent?, pos:[x,y,z], size:número|[x,y,z], rot?:[x,y,z graus], color, opacity?, finish?, mirror?:'x'|'z'|'xz', from?, to?, label?, note?}.",
+  "Formas: sphere, box, rbox (caixa arredondada), cylinder, capsule, cone, torus, ring, plane, arrow (+y), group, wheel (roda com pneu e jante; size [diâmetro,largura,diâmetro]), gear (teeth 6-24), stream (partículas que correm de from a to, ou por path de pontos; count 3-14, size = tamanho da partícula).",
+  "finish: matte (omissão), metal, glass (translúcido: deixa ver o interior), glow (luz, energia, fluxo).",
+  "from/to [x,y,z] em cylinder, capsule, box, rbox e arrow ligam dois pontos (tubos, fios, hastes, setas) sem calcular rotações.",
+  "MÉTODO: (1) decompõe o objecto real em 14 a 30 peças com proporções reais (x comprimento, y altura, z largura, 1 unidade ≈ 1 metro): corpo, partes funcionais, cada roda/pá/tubo/apoio;",
+  "(2) um group + parent agrupa o que se move junto; mirror repete peças simétricas (rodas, asas, pernas) e as animações também;",
+  "(3) invólucros e cascas em finish glass para o interior se ver; (4) mostra a CAUSA com setas e streams: azul = fluido/entrada, verde = resultado/força útil, vermelho = peso/perda, laranja = energia; entram com opacity 0 + anim fade por ordem (at_ms crescente);",
+  "(5) acaba no efeito visível (sobe, sai, orbita, acende); (6) captions: 3 a 6 frases curtas sincronizadas com at_ms; (7) label (≤22 caracteres) só em 4 a 8 peças que a explicação usa, cada uma com note que ensina.",
+  "Anims: spin (axis, speed), orbit (around, speed), bounce (axis, amp, speed), pulse (amp, speed), move (path, duration_ms), fade (to_opacity, duration_ms), color (to_color, duration_ms); at_ms atrasa; move/fade/color ficam no fim, loop:true faz vai-e-volta.",
+  "Serve para qualquer tema: máquinas, circuitos (fios = cylinder from/to, cargas = stream por path fechado), órgãos, órbitas, estruturas, camadas. Máx. 48 objectos.",
+  "O objecto principal ocupa 60% a 80% da cena; setas e etiquetas menores que metade dele. Rótulos em português. Nada de texto fora do JSON.",
+  "Eixos: x = direita, y = cima, z = para ti; a câmara front vê o plano x-y (usa-a para pontes, engrenagens, esquemas); iso mostra volume; top, órbitas. O eixo de wheel e gear é o z; torus size [diâmetro, espessura do tubo, diâmetro] é um anel horizontal.",
+  "ESCREVE MENOS E FICA IGUAL: mirror:'x'|'z'|'xz' numa peça cria as cópias simétricas (rodas, asas, pernas, parafusos); repeat:{n,step:[x,y,z],cols?,row_step?,around?:'x'|'y'|'z',center?,angle?} faz fileiras, colunas, grelhas e rodas de peças iguais; on:{id,at:'top'|'bottom'|'left'|'right'|'front'|'back',gap?} encaixa a peça em cima de outra. Usa sempre estes atalhos em vez de escrever peças repetidas uma a uma (mesmo desenho, resposta mais curta).",
+  "Não copies os exemplos: imita só o nível de detalhe e a lógica (peças reais, causa → efeito, legendas sincronizadas) para o tema pedido.",
+].join(" ");
+
+export function shapesSystemFor(prompt: string): string {
+  const ex = pickShapeExamples(prompt)
+    .map((e) => `Exemplo (${e.name}): ${e.scene}`)
+    .join(" ");
+  return SHAPES_SYSTEM + " " + ex;
+}
+
+function extractObject(text: string): any | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+async function askShapes(prompt: string, deadline: number): Promise<any | null> {
+  const targets: Array<() => Promise<string>> = [];
+
+  if (API_BASE) {
+    const url = `${API_BASE}/chat/completions`;
+    targets.push(async () => {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: API_MODEL || "gemini-web",
+          temperature: 0.5,
+          messages: [
+            { role: "system", content: shapesSystemFor(prompt) },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
+      if (!res.ok) throw new Error(`bridge ${res.status}`);
+      const json: any = await res.json();
+      return String(json?.choices?.[0]?.message?.content ?? "");
+    });
+  }
+
+  for (const apiKey of GEMINI_KEYS.slice(0, 2)) {
+    for (const model of ["gemini-3.1-flash-lite", "gemini-flash-lite-latest"]) {
+      targets.push(async () => {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: shapesSystemFor(prompt) }] },
+              contents: [{ role: "user", parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.5, maxOutputTokens: 6144 },
+            }),
+          },
+        );
+        if (!res.ok) throw new Error(`gemini ${res.status}`);
+        const json: any = await res.json();
+        return (json?.candidates?.[0]?.content?.parts ?? [])
+          .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+          .join("");
+      });
+    }
+  }
+
+  for (const run of targets) {
+    if (Date.now() > deadline) break;
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 25000);
+      const text = await run();
+      clearTimeout(timer);
+      const obj = extractObject(text);
+      if (obj) return obj;
+    } catch {
+      /* tenta o próximo */
+    }
+  }
+  return null;
+}
+
+// Junta a cena à página (uma só model3d, no primeiro passo).
+function attachScene(lesson: Lesson, raw: any, title?: string): boolean {
+  const spec = sanitizeShapes(raw);
+  if (!spec || !spec.objects.length) return false;
+  const step = lesson.steps[0];
+  if (!step) return false;
+  if ((step.board ?? []).some((o: any) => o.op === "model3d")) return false;
+  const op: any = {
+    op: "model3d",
+    model: "shapes",
+    shapes: spec,
+    at: [10, 4],
+    w: 78,
+    h: 40,
+    title: title ? String(title).slice(0, 40) : undefined,
+  };
+  step.board = [op, ...(step.board ?? [])];
+  return true;
 }
 
 // só estes erros podem vir do formato da resposta; os outros não melhoram a
 // repetir o mesmo modelo, por isso passamos ao fallback seguinte
 const FORMAT_RETRY = new Set([400, 404, 422]);
 
-// O responseSchema do Gemini rejeita campos da variante OpenAI; limpa-os.
-function geminiSchema(node: any): any {
-  if (Array.isArray(node)) return node.map(geminiSchema);
-  if (node && typeof node === "object") {
-    const out: any = {};
-    for (const [k, v] of Object.entries(node)) {
-      if (k === "additionalProperties" || k === "strict") continue;
-      out[k] = geminiSchema(v);
-    }
-    return out;
-  }
-  return node;
-}
-
 export async function generateLesson(input: GenerateInput): Promise<Lesson> {
+  const inicio = Date.now();
+  // tempos de cada fase (aparecem na consola do browser; ajudam a ver o que
+  // está lento sem adivinhar)
+  const marca = (etapa: string) => {
+    try {
+      console.log("[viently] " + etapa + " " + (Date.now() - inicio) + " ms");
+    } catch (e) {}
+  };
   const key = await cacheKey(input);
   const cached = await readCache(key);
-  if (cached) return cached;
+  if (cached) { marca("cache"); return cached; }
 
   const system = lessonSystem({
     pace: input.pace,
@@ -636,39 +978,154 @@ export async function generateLesson(input: GenerateInput): Promise<Lesson> {
   const deadline = Date.now() + 300000;
   let lastError: unknown = null;
 
-  // Tentativas por destino: o OpenRouter (modelos gratuitos) é o principal —
-  // caminho provado; o Gemini oficial entra se este falhar, e a API local
-  // (proxy no PC) fica em último, só útil em casa.
-  type Attempt = { model: string; endpoint: string; key: string | null };
+  // A cena 3D não espera pela página: assim que o aluno pergunta, o pedido
+  // da cena segue em paralelo com o da explicação. A ponte aceita os dois
+  // ao mesmo tempo, por isso o total passa a ser a chamada mais lenta em
+  // vez da soma das duas (~30 s + ~30 s antes).
+  const contexto = (input.history ?? [])
+    .slice(-2)
+    .map((m) => String(m.content ?? ""))
+    .join(" / ")
+    .slice(0, 240);
+  const pedidoCena = [
+    "TEMA DA CENA: " + input.question,
+    contexto ? "Contexto do aluno: " + contexto : "",
+    "Mostra o mecanismo central deste tema: as peças reais que o compõem, como se ligam e o que se move por causa de quê.",
+    "Exigência: 14 a 24 peças reais (nada de versões simplificadas), 3 a 6 captions sincronizadas, rótulos nas peças que a explicação usa e animação que mostre a causa e o efeito.",
+    "Usa mirror, repeat e on para as peças simétricas ou repetidas.",
+    "Devolve SÓ a cena JSON (objects, anims, captions). Não escrevas página, título, say nem board.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const cenaEmParalelo: Promise<any | null> = askShapes(pedidoCena, Date.now() + 150000).catch(
+    () => null,
+  );
+
+
+  // Gemini responde em segundos; OpenRouter é o fallback quando não há chave
+  // Gemini ou ela falha.
+  type Attempt = {
+    kind: "gemini" | "chat";
+    model: string;
+    endpoint: string;
+    key: string | null;
+  };
   const attempts: Attempt[] = [];
-  if (GEMINI_KEY) {
-    attempts.push({ model: GEMINI_MODEL, endpoint: GEMINI_ENDPOINT, key: GEMINI_KEY });
+  // Ponte local (Gemini web via cookies do GemCLI) primeiro: grátis e sem
+  // quota por minuto. O prompt completo é aceite; se recusar, a própria
+  // ponte repete com um pedido curto.
+  if (API_BASE) {
+    attempts.push({
+      kind: "chat",
+      model: API_MODEL || DEFAULT_MODEL,
+      endpoint: `${API_BASE}/chat/completions`,
+      key: input.key,
+    });
   }
-  const cloudKey = OPENROUTER_KEY || input.key;
+  for (const apiKey of GEMINI_KEYS) {
+    for (const m of GEMINI_MODELS) {
+      attempts.push({ kind: "gemini", model: m, endpoint: "gemini", key: apiKey });
+    }
+  }
+  const cloudKey = input.key && String(input.key).trim() ? input.key : null;
   if (cloudKey) {
     const cloudModels = [input.model || DEFAULT_MODEL, ...FALLBACK_MODELS];
-    for (const m of cloudModels) attempts.push({ model: m, endpoint: ENDPOINT, key: cloudKey });
+    for (const m of cloudModels) {
+      attempts.push({ kind: "chat", model: m, endpoint: ENDPOINT, key: cloudKey });
+    }
   }
-  if (API_BASE) {
-    attempts.push({ model: API_MODEL, endpoint: `${API_BASE}/chat/completions`, key: API_KEY });
+  if (!attempts.length) {
+    attempts.push({ kind: "chat", model: DEFAULT_MODEL, endpoint: ENDPOINT, key: input.key });
   }
-  if (!attempts.length) attempts.push({ model: DEFAULT_MODEL, endpoint: ENDPOINT, key: input.key });
 
   for (const attempt of attempts) {
-    for (const mode of ["schema", "json", "none"] as Format[]) {
+    const modes: Format[] =
+      attempt.kind === "gemini" ? ["none", "json"] : ["json", "none"];
+    for (const mode of modes) {
       if (Date.now() > deadline) break;
       try {
         const budget = Math.max(20000, Math.min(150000, deadline - Date.now()));
         const localEp = API_BASE ? `${API_BASE}/chat/completions` : null;
-        const wait = localEp && attempt.endpoint === localEp ? Math.min(15000, budget) : budget;
-        const lesson = await callModel(attempt.model, system, input, mode, wait, attempt.endpoint, attempt.key);
+        const wait = localEp && attempt.endpoint === localEp ? Math.min(90000, budget) : budget;
+        const lesson =
+          attempt.kind === "gemini"
+            ? await callGemini(
+                attempt.model,
+                system,
+                input,
+                mode === "schema" ? "json" : mode,
+                Math.min(60000, budget),
+                attempt.key,
+              )
+            : await callModel(
+                attempt.model,
+                system,
+                input,
+                mode,
+                wait,
+                attempt.endpoint,
+                attempt.key,
+              );
         if (!lesson.steps.length) throw new Error("A aula ficou sem passos utilizáveis.");
+        marca("página");
+
+        // A página pedida em 3D mas ainda sem cena: pede-se a cena à parte,
+        // com um pedido pequeno e só de geometria.
+        const firstBoard = lesson.steps[0]?.board ?? [];
+        const hasShapes = firstBoard.some(
+          (o) => o.op === "model3d" && (o as any).model === "shapes",
+        );
+        if (lesson.visual === "3d" && !hasShapes) {
+          // a cena tem orçamento próprio: a página já gastou o tempo dela
+          const sceneDeadline = Math.max(deadline, Date.now() + 45000);
+          // a que arrancou em paralelo já deve estar pronta; só se falhou é
+          // que se pede outra, agora com a ideia exacta da página
+          let raw = await cenaEmParalelo;
+          marca("cena em paralelo");
+          if (!raw || !sanitizeShapes(raw)) {
+            raw = await askShapes(
+              [
+                `TEMA DA CENA: ${lesson.title ?? input.question}`,
+                lesson.subtitle ?? "",
+                `IDEIA A MOSTRAR: ${String(lesson.steps[0]?.say ?? "").slice(0, 320)}`,
+                "Devolve SÓ a cena JSON (objects, anims, captions). Não escrevas página, título, say nem board.",
+              ]
+                .filter(Boolean)
+                .join("\n"),
+              sceneDeadline,
+            );
+          }
+          if (raw) attachScene(lesson, raw, lesson.title);
+          marca("cena");
+          // revisão: se a cena ficou pobre, uma segunda tentativa com o que falta
+          const first = (lesson.steps[0]?.board ?? []).find((o: any) => o.op === "model3d") as any;
+          const issues = first?.shapes ? lintShapes(first.shapes) : ["a cena não passou a validação"];
+          marca(issues.length ? "revisao: " + issues.join(" | ") : "revisao: ok");
+          if (issues.length && Date.now() < sceneDeadline - 8000) {
+            const again = await askShapes(
+              [
+                `Página: "${lesson.title ?? input.question}"`,
+                String(lesson.steps[0]?.say ?? "").slice(0, 600),
+                `Pedido do aluno: ${input.question}`,
+                `A versão anterior ficou fraca: ${issues.join("; ")}. Refaz a cena completa com 14 a 24 peças reais: mantém o que já estava correcto e acrescenta as peças, rótulos, captions e animações que faltam.`,
+              ].join("\n"),
+              deadline,
+            );
+            const better = again ? sanitizeShapes(again) : null;
+            if (better && (!first?.shapes || lintShapes(better).length < issues.length)) {
+              if (first) first.shapes = better;
+              else attachScene(lesson, again, lesson.title);
+            }
+          }
+        }
         if (!lesson.suggestions?.length) {
           lesson.suggestions = ["Dá-me um exemplo concreto", "Porque é que isso acontece?"];
         }
         await writeCache(key, lesson);
+        marca("fim");
         return lesson;
       } catch (e: any) {
+        marca("falhou " + attempt.kind + "/" + mode + ": " + String(e && e.message).slice(0, 90));
         lastError = e;
         // 401/402/403/429 não melhoram a tentar outro formato; modelo seguinte
         if (!(e instanceof HttpError) || !FORMAT_RETRY.has(e.status)) break;
