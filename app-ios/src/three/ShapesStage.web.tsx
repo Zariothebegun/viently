@@ -12,13 +12,21 @@ void threeSources();
   Na web não há WebView: a mesma cena corre dentro de um iframe, como nos
   outros módulos 3D.
 
+  Só a cena que está no ecrã é que é montada. Antes, todas as páginas do feed
+  ficavam montadas ao mesmo tempo — três ou quatro cenas a desenhar em
+  paralelo esgotavam a thread principal e a app parecia bloqueada. Agora a
+  cena entra quando a página aparece e sai quando sai do ecrã.
+
   O three é descarregado uma vez (ver threeAsset.ts) e entra na cena como
   endereço local, para nenhuma página depender do CDN no momento em que abre.
-  Se o próprio download falhar, o HTML mostra a nota e a página continua a
-  ensinar.
 */
 export function ShapesStage({ spec }: { spec: ShapesSpec }) {
   const [sources, setSources] = useState<string[] | null>(null);
+  // Começa desligada: se arrancasse a "true", todas as páginas montavam a cena
+  // no primeiro render (antes de o observer responder) e voltávamos a ter
+  // várias cenas a desenhar ao mesmo tempo.
+  const [visivel, setVisivel] = useState(false);
+  const box = useRef<any>(null);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -31,9 +39,39 @@ export function ShapesStage({ spec }: { spec: ShapesSpec }) {
     };
   }, []);
 
+  // Só desenha quando a caixa do 3D está (ou está quase) à vista.
+  useEffect(() => {
+    const el: any = box.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setVisivel(true);
+      return;
+    }
+    let live = true;
+    let respondeu = false;
+    // se o observer não disser nada em 700 ms, mostra na mesma: uma cena que
+    // nunca monta é pior do que uma cena a mais
+    const t = setTimeout(() => {
+      if (live && !respondeu) setVisivel(true);
+    }, 700);
+    const io = new IntersectionObserver(
+      (entradas) => {
+        respondeu = true;
+        if (live) setVisivel(!!entradas[0]?.isIntersecting);
+      },
+      { rootMargin: "60% 0px 60% 0px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => {
+      live = false;
+      clearTimeout(t);
+      io.disconnect();
+    };
+  }, []);
+
   const html = useMemo(
-    () => (sources ? buildShapesHtml(spec, "inline", sources) : ""),
-    [spec, sources],
+    () => (sources && visivel ? buildShapesHtml(spec, "inline", sources) : ""),
+    [spec, sources, visivel],
   );
 
   useEffect(() => {
@@ -41,12 +79,12 @@ export function ShapesStage({ spec }: { spec: ShapesSpec }) {
     fade.setValue(0);
     const t = setTimeout(() => {
       Animated.timing(fade, { toValue: 1, duration: 420, useNativeDriver: true }).start();
-    }, 700);
+    }, 450);
     return () => clearTimeout(t);
   }, [html, fade]);
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View ref={box} style={StyleSheet.absoluteFill}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: fade }]}>
         {!!html && (
           <iframe
