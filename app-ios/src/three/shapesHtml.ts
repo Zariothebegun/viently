@@ -649,6 +649,28 @@ if (renderer) {
         }
       }
     });
+    // A linha do rótulo vai da pílula até à BORDA do desenho, não até à peça:
+    // antes atravessava o modelo de fora a dentro e "cortava-o" a cada volta
+    // que a cena dava. O ponto na peça continua a marcar o sítio certo.
+    function entrada(rect, x1, y1, x2, y2) {
+      const dx = x2 - x1, dy = y2 - y1;
+      let tmin = 0, tmax = 1;
+      const bordas = [
+        [-dx, x1 - rect[0]],
+        [dx, rect[2] - x1],
+        [-dy, y1 - rect[1]],
+        [dy, rect[3] - y1],
+      ];
+      for (let i = 0; i < 4; i++) {
+        const pde = bordas[i][0], q = bordas[i][1];
+        if (pde === 0) { if (q < 0) return null; continue; }
+        const r = q / pde;
+        if (pde < 0) { if (r > tmax) return null; if (r > tmin) tmin = r; }
+        else { if (r < tmin) return null; if (r < tmax) tmax = r; }
+      }
+      return [x1 + tmin * dx, y1 + tmin * dy];
+    }
+
     colunas.esq.concat(colunas.dir).forEach(function (p) {
       const x = p.px, y = p.py, w = p.pw, h = p.ph;
       const tr = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
@@ -656,10 +678,14 @@ if (renderer) {
       p.it.pill.style.opacity = "1";
       const ex = clamp(p.ax, x, x + w);
       const ey = p.ay > y + h ? y + h : y;
+      const dentro = p.ax > minX && p.ax < maxX && p.ay > minY && p.ay < maxY;
+      const corte = dentro ? entrada([minX, minY, maxX, maxY], ex, ey, p.ax, p.ay) : null;
+      const lx = corte ? corte[0] : p.ax;
+      const ly = corte ? corte[1] : p.ay;
       p.it.line.style.display = "";
       p.it.dot.style.display = "";
       p.it.line.setAttribute("x1", ex); p.it.line.setAttribute("y1", ey);
-      p.it.line.setAttribute("x2", p.ax); p.it.line.setAttribute("y2", p.ay);
+      p.it.line.setAttribute("x2", lx); p.it.line.setAttribute("y2", ly);
       p.it.dot.setAttribute("cx", p.ax); p.it.dot.setAttribute("cy", p.ay);
     });
   }

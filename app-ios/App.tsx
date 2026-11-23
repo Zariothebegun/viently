@@ -886,7 +886,11 @@ export default function App() {
         // Sem esta quebra a página virava um bloco único ilegível.
         .replace(/([.!?;:])\s+(\d{1,2})\.\s+/g, "$1\n$2. ")
         .trim();
-      return paginateLessonText(content, 560).map((chunk, chunkIndex) => ({
+      // Numa página com desenho 3D sobra menos altura para texto: com o mesmo
+      // orçamento o texto era cortado no fundo (aparecia a barra de deslizar e
+      // o parágrafo ficava a meio). Divide-se em mais páginas em vez de cortar.
+      const temModelo = (step.board ?? []).some((o: any) => o.op === "model3d");
+      return paginateLessonText(content, temModelo ? 420 : 560).map((chunk, chunkIndex) => ({
         step, sourceIndex, chunk, chunkIndex,
       }));
     });
