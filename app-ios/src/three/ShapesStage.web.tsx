@@ -57,7 +57,10 @@ export function ShapesStage({ spec }: { spec: ShapesSpec }) {
     const io = new IntersectionObserver(
       (entradas) => {
         respondeu = true;
-        if (live) setVisivel(!!entradas[0]?.isIntersecting);
+        // Monta UMA vez, quando aparece. Se desmontasse ao sair do ecrã, um
+        // vaivém de 1 cm a rolar fazia rebuild da cena (57 KB + contexto
+        // WebGL novo) dezenas de vezes por segundo e prendia a aba.
+        if (live && entradas.some((e) => e.isIntersecting)) setVisivel(true);
       },
       { rootMargin: "60% 0px 60% 0px", threshold: 0 },
     );

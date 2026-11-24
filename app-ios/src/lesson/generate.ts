@@ -228,6 +228,15 @@ export function sanitizeOps(raw: any): Op[] {
         break;
       }
       case "scene": {
+        // Uma "cena" é só um contentor. Se os elementos não aparecerem (o
+        // modelo costuma pôr at_ms a zero e a cena ficava um bloco vazio que
+        // ocupava meia página), a página ficava com um buraco. Achata-se: cada
+        // elemento passa a ser uma operação normal, no lugar da cena.
+        const flat = sanitizeOps(Array.isArray(o.elements) ? o.elements.map((el: any) => el && el.op) : []);
+        if (flat.length) {
+          out.push(...flat);
+          break;
+        }
         const rawElements = Array.isArray(o.elements) ? o.elements.slice(0, 16) : [];
         const elements: { at_ms: number; duration_ms: number; op: Op }[] = [];
         for (const element of rawElements) {
