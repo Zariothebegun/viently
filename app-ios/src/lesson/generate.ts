@@ -45,7 +45,7 @@ export const FALLBACK_MODELS = [
 // O modelo gratuito leva ~50 s. Uma pergunta repetida (na mesma aula ou numa
 // demonstração) devolve a página da cache em milissegundos.
 
-const CACHE_KEY = "viently.lessons.v29";
+const CACHE_KEY = "viently.lessons.v31";
 const CACHE_TTL = 1000 * 60 * 60 * 24 * 14;
 const CACHE_MAX = 12;
 
@@ -67,7 +67,7 @@ async function cacheKey(input: GenerateInput): Promise<string> {
     .map((m) => `${m.role}:${String(m.content ?? "")}`)
     .join("~");
   return hash(
-    `lesson-v29|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
+    `lesson-v31|${input.question}|${input.pace}|${input.minutes}|${input.depth ?? 1}|${input.profile}|${tail}|${input.model ?? ""}`,
   );
 }
 
@@ -922,17 +922,24 @@ async function askShapes(prompt: string, deadline: number): Promise<any | null> 
     }
   }
 
-  for (const run of targets) {
-    if (Date.now() > deadline) break;
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 25000);
-      const text = await run();
-      clearTimeout(timer);
-      const obj = extractObject(text);
-      if (obj) return obj;
-    } catch {
-      /* tenta o próximo */
+  // O Gemini web responde mal com frequência (prosa em vez de JSON, ou 502
+  // do lado da ponte). Uma segunda passagem pelos mesmos alvos resolve a
+  // maioria dos casos sem custar nada: o primeiro pedido já pagou o tempo.
+  for (let passagem = 0; passagem < 2; passagem++) {
+    for (const run of targets) {
+      if (Date.now() > deadline) break;
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 25000);
+        const text = await run();
+        clearTimeout(timer);
+        const obj = extractObject(text);
+        if (obj) {
+          return obj;
+        }
+      } catch {
+        /* tenta o próximo */
+      }
     }
   }
   return null;
