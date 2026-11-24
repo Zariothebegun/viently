@@ -1,0 +1,56 @@
+name: Viently app validation
+
+on:
+  push:
+    branches:
+      - redesign/tiktok-feed-visual-engine
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-ios
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app-ios/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Align Expo packages with the SDK
+        run: npx expo install --fix
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check
+      - name: TypeScript validation
+        run: npx tsc --noEmit
+      - name: Board layout regression tests
+        run: npm test
+      - name: Bundle the iOS app with Metro
+        run: npx expo export --platform ios --output-dir /tmp/viently-export
+      - name: Commit Expo package alignment
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Align Expo dependencies with SDK 58"
+            git restore --worktree .
+            git clean -fd
+            git pull --rebase origin "$GITHUB_REF_NAME"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
